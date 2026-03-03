@@ -1,0 +1,13 @@
+{
+  "server": {
+    "port": 8081,
+    "read_timeout": "5s",
+    "write_timeout": "5s",
+    "max_header_bytes": 1000000
+  },
+  "handler": {
+    "request_timeout": "5s",
+    "allowed_cors_origins": "*"
+  }
+}
+

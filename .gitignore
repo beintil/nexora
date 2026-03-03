@@ -1,0 +1,11 @@
+.DS_Store
+
+/backend/.env
+/backend/bin/
+/backend/internal/domain/dictionary_consts.go
+/backend/app
+/backend/models/
+/backend/.idea/
+/front/.idea/
+/.idea/
+/.cursor/rules/

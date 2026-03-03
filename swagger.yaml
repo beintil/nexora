@@ -1,0 +1,531 @@
+swagger: "2.0"
+info:
+  version: "1.0.0"
+  title: "NEXORA API"
+  description: "Unified API contract for frontend and backend."
+host: localhost:8080
+x-go-package: telephony
+basePath: /
+schemes:
+  - http
+consumes:
+  - application/json
+produces:
+  - application/json
+
+paths:
+  /webhook/twilio/voice/status:
+    post:
+      tags:
+        - twilio
+      summary: Twilio Voice status callback (webhook)
+      description: Twilio StatusCallback for call-progress-events. Тело запроса — JSON (TwilioVoiceStatusCallbackForm).
+      operationId: twilioVoiceStatusCallback
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          schema:
+            $ref: "#/definitions/TwilioVoiceStatusCallbackForm"
+      responses:
+        200:
+          description: OK
+        400:
+          description: Bad request
+
+  /v1/auth/register:
+    post:
+      tags:
+        - auth
+      summary: Register a new company account
+      description: Register a new company account with email/password credentials.
+      operationId: authRegister
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: "#/definitions/RegisterRequest"
+      responses:
+        201:
+          description: Successfully registered
+          schema:
+            $ref: "#/definitions/RegisterResponse"
+        400:
+          description: Bad request (validation error)
+          schema:
+            $ref: "#/definitions/TransportError"
+        409:
+          description: Account already exists
+          schema:
+            $ref: "#/definitions/TransportError"
+        500:
+          description: Internal server error
+          schema:
+            $ref: "#/definitions/TransportError"
+
+  /v1/auth/login:
+    post:
+      tags:
+        - auth
+      summary: Sign in with email and password
+      operationId: authLogin
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: "#/definitions/LoginRequest"
+      responses:
+        200:
+          description: Login success
+          schema:
+            $ref: "#/definitions/LoginResponse"
+        400:
+          description: Bad request (validation error)
+          schema:
+            $ref: "#/definitions/TransportError"
+        401:
+          description: Invalid credentials
+          schema:
+            $ref: "#/definitions/TransportError"
+        500:
+          description: Internal server error
+          schema:
+            $ref: "#/definitions/TransportError"
+
+  /v1/auth/refresh:
+    post:
+      tags:
+        - auth
+      summary: Refresh access and refresh tokens
+      description: Accepts refresh token in body. Returns new access and refresh tokens; backend also sets refresh token in httpOnly cookie.
+      operationId: authRefresh
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: "#/definitions/RefreshRequest"
+      responses:
+        200:
+          description: New tokens
+          schema:
+            $ref: "#/definitions/LoginResponse"
+        401:
+          description: Invalid or expired refresh token
+          schema:
+            $ref: "#/definitions/TransportError"
+        500:
+          description: Internal server error
+          schema:
+            $ref: "#/definitions/TransportError"
+
+  /v1/auth/logout:
+    post:
+      tags:
+        - auth
+      summary: Log out and invalidate refresh token
+      description: Accepts refresh token in body (or from cookie). Invalidates the token in Redis and clears the cookie. Idempotent when token is missing or already invalid.
+      operationId: authLogout
+      parameters:
+        - in: body
+          name: body
+          schema:
+            $ref: "#/definitions/RefreshRequest"
+      responses:
+        204:
+          description: Logged out
+        500:
+          description: Internal server error
+          schema:
+            $ref: "#/definitions/TransportError"
+
+  /v1/auth/send-code:
+    post:
+      tags:
+        - auth
+      summary: Send verification code to email or phone
+      operationId: authSendCode
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: "#/definitions/SendCodeRequest"
+      responses:
+        204:
+          description: Code sent
+        400:
+          description: Bad request (invalid email/phone or missing both)
+          schema:
+            $ref: "#/definitions/TransportError"
+        500:
+          description: Internal server error
+          schema:
+            $ref: "#/definitions/TransportError"
+
+  /v1/auth/verify-link:
+    get:
+      tags:
+        - auth
+      summary: Verify link (transition by link from email/SMS)
+      description: Token (UUID) передаётся в query. Ссылка приходит в сообщении.
+      operationId: authVerifyLinkGet
+      parameters:
+        - in: query
+          name: token
+          required: true
+          type: string
+          format: uuid
+      responses:
+        204:
+          description: Link verified
+        400:
+          description: Invalid, expired or too many attempts
+          schema:
+            $ref: "#/definitions/TransportError"
+        500:
+          description: Internal server error
+          schema:
+            $ref: "#/definitions/TransportError"
+    post:
+      tags:
+        - auth
+      summary: Verify link by token in body
+      operationId: authVerifyLinkPost
+      parameters:
+        - in: body
+          name: body
+          schema:
+            $ref: "#/definitions/VerifyLinkRequest"
+      responses:
+        204:
+          description: Link verified
+        400:
+          description: Invalid, expired or too many attempts
+          schema:
+            $ref: "#/definitions/TransportError"
+        500:
+          description: Internal server error
+          schema:
+            $ref: "#/definitions/TransportError"
+
+  /v1/profile:
+    get:
+      tags:
+        - profile
+      summary: Get current user profile
+      operationId: profileGet
+      responses:
+        200:
+          description: Profile data
+          schema:
+            $ref: "#/definitions/ProfileResponse"
+        401:
+          description: Unauthorized
+          schema:
+            $ref: "#/definitions/TransportError"
+        500:
+          description: Internal server error
+          schema:
+            $ref: "#/definitions/TransportError"
+    patch:
+      tags:
+        - profile
+      summary: Update profile (e.g. full name)
+      operationId: profileUpdate
+      parameters:
+        - in: body
+          name: body
+          schema:
+            $ref: "#/definitions/UpdateProfileRequest"
+      responses:
+        200:
+          description: Updated profile
+          schema:
+            $ref: "#/definitions/ProfileResponse"
+        400:
+          description: Bad request
+          schema:
+            $ref: "#/definitions/TransportError"
+        401:
+          description: Unauthorized
+          schema:
+            $ref: "#/definitions/TransportError"
+        500:
+          description: Internal server error
+          schema:
+            $ref: "#/definitions/TransportError"
+
+  /v1/profile/avatar:
+    post:
+      tags:
+        - profile
+      summary: Upload avatar
+      operationId: profileUploadAvatar
+      consumes:
+        - multipart/form-data
+      parameters:
+        - in: formData
+          name: avatar
+          type: file
+          required: true
+      responses:
+        200:
+          description: Profile with new avatar URL
+          schema:
+            $ref: "#/definitions/ProfileResponse"
+        400:
+          description: Bad request
+          schema:
+            $ref: "#/definitions/TransportError"
+        401:
+          description: Unauthorized
+          schema:
+            $ref: "#/definitions/TransportError"
+        500:
+          description: Internal server error
+          schema:
+            $ref: "#/definitions/TransportError"
+
+definitions:
+  RegisterRequest:
+    type: object
+    required:
+      - companyName
+      - password
+    properties:
+      companyName:
+        type: string
+        minLength: 1
+      email:
+        type: string
+        format: email
+        maxLength: 255
+      phone:
+        type: string
+        maxLength: 20
+      password:
+        type: string
+        minLength: 6
+        format: password
+      fullName:
+        type: string
+        maxLength: 255
+
+  LoginRequest:
+    type: object
+    required:
+      - login
+      - password
+    properties:
+      login:
+        type: string
+        description: Email or phone number
+      password:
+        type: string
+        minLength: 6
+        format: password
+
+  SendCodeRequest:
+    type: object
+    properties:
+      email:
+        type: string
+        format: email
+        maxLength: 255
+      phone:
+        type: string
+        maxLength: 20
+    description: At least one of email or phone is required
+
+  VerifyLinkRequest:
+    type: object
+    required:
+      - token
+    properties:
+      token:
+        type: string
+        format: uuid
+        description: UUID из ссылки подтверждения
+
+  RefreshRequest:
+    type: object
+    required:
+      - refreshToken
+    properties:
+      refreshToken:
+        type: string
+
+  LoginResponse:
+    type: object
+    required:
+      - accessToken
+      - refreshToken
+    properties:
+      accessToken:
+        type: string
+      refreshToken:
+        type: string
+
+  RegisterResponse:
+    type: object
+    required:
+      - accessToken
+      - refreshToken
+    properties:
+      accessToken:
+        type: string
+      refreshToken:
+        type: string
+
+  TwilioVoiceStatusCallbackForm:
+    type: object
+    properties:
+      CallSid:
+        type: string
+      ParentCallSid:
+        type: string
+      AccountSid:
+        type: string
+      From:
+        type: string
+      To:
+        type: string
+      CallStatus:
+        type: string
+      Direction:
+        type: string
+      ApiVersion:
+        type: string
+      CallerName:
+        type: string
+      ForwardedFrom:
+        type: string
+      CallbackSource:
+        type: string
+      SequenceNumber:
+        type: string
+      Timestamp:
+        type: string
+      CallDuration:
+        type: string
+      Duration:
+        type: string
+      SipResponseCode:
+        type: string
+      RecordingSid:
+        type: string
+      RecordingUrl:
+        type: string
+      RecordingDuration:
+        type: string
+      Called:
+        type: string
+      CalledCity:
+        type: string
+      CalledCountry:
+        type: string
+      CalledState:
+        type: string
+      CalledZip:
+        type: string
+      Caller:
+        type: string
+      CallerCity:
+        type: string
+      CallerCountry:
+        type: string
+      CallerState:
+        type: string
+      CallerZip:
+        type: string
+      FromCity:
+        type: string
+      FromCountry:
+        type: string
+      FromState:
+        type: string
+      FromZip:
+        type: string
+      ToCity:
+        type: string
+      ToCountry:
+        type: string
+      ToState:
+        type: string
+      ToZip:
+        type: string
+
+  ProfileResponse:
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+      company_id:
+        type: string
+        format: uuid
+      company_name:
+        type: string
+      role_id:
+        type: integer
+        format: int16
+      email:
+        type: string
+        format: email
+      phone:
+        type: string
+      full_name:
+        type: string
+      avatar_url:
+        type: string
+        description: Полная ссылка на аватар в хранилище
+      avatar_id:
+        type: string
+        description: Идентификатор файла аватара в хранилище (UUID)
+      created_at:
+        type: string
+        format: date-time
+      updated_at:
+        type: string
+        format: date-time
+
+  UpdateProfileRequest:
+    type: object
+    properties:
+      full_name:
+        type: string
+        maxLength: 255
+
+  TransportError:
+    type: object
+    required:
+      - message
+      - code
+    properties:
+      error:
+        type: string
+        example: "ServiceErrorUserAlreadyExists"
+        description: "Error type identifier"
+      message:
+        type: string
+        example: "validation error"
+        description: "Human-readable error message"
+      details:
+        type: string
+        description: "Additional error details (optional)"
+      code:
+        type: integer
+        format: int32
+        example: 400
+        description: "HTTP status code (e.g., 400, 409, 500)"
+      transaction_id:
+        type: string
+        format: uuid
+        description: "Unique transaction ID for tracing"
+    description: "Error response for API requests"

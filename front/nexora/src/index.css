@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+/* Theme: light (default) */
+:root,
+[data-theme="light"] {
+    --theme-bg-page: #faf9f7;
+    --theme-bg-sidebar: #ffffff;
+    --theme-bg-header: rgba(255, 255, 255, 0.8);
+    --theme-bg-card: #ffffff;
+    --theme-input-bg: #ffffff;
+    --theme-border: rgba(0, 0, 0, 0.08);
+    --theme-text: #1c1917;
+    --theme-text-muted: #57534e;
+    --theme-text-muted2: #78716c;
+    --theme-hover: #fafaf9;
+    --theme-active: #f5f5f4;
+    --theme-btn-primary-bg: #1c1917;
+    --theme-btn-primary-text: #fafaf9;
+    --theme-focus-ring: #1c1917;
+}
+
+[data-theme="dark"] {
+    --theme-bg-page: #0f172a;
+    --theme-bg-sidebar: #1e293b;
+    --theme-bg-header: rgba(30, 41, 59, 0.9);
+    --theme-bg-card: #1e293b;
+    --theme-input-bg: #334155;
+    --theme-border: rgba(255, 255, 255, 0.1);
+    --theme-text: #f1f5f9;
+    --theme-text-muted: #94a3b8;
+    --theme-text-muted2: #cbd5e1;
+    --theme-hover: rgba(255, 255, 255, 0.06);
+    --theme-active: rgba(255, 255, 255, 0.1);
+    --theme-btn-primary-bg: #e2e8f0;
+    --theme-btn-primary-text: #0f172a;
+    --theme-focus-ring: #94a3b8;
+}
+
+[data-theme="gray"] {
+    --theme-bg-page: #e5e7eb;
+    --theme-bg-sidebar: #f3f4f6;
+    --theme-bg-header: rgba(243, 244, 246, 0.95);
+    --theme-bg-card: #ffffff;
+    --theme-input-bg: #ffffff;
+    --theme-border: #d1d5db;
+    --theme-text: #111827;
+    --theme-text-muted: #4b5563;
+    --theme-text-muted2: #6b7280;
+    --theme-hover: #e5e7eb;
+    --theme-active: #d1d5db;
+    --theme-btn-primary-bg: #1f2937;
+    --theme-btn-primary-text: #f9fafb;
+    --theme-focus-ring: #6b7280;
+}
+
+.nav-link-active {
+    background: var(--theme-active);
+    color: var(--theme-text);
+}
+.nav-link-inactive {
+    color: var(--theme-text-muted);
+}
+.nav-link-inactive:hover {
+    background: var(--theme-hover);
+    color: var(--theme-text);
+}
+
+input::placeholder {
+    color: var(--theme-text-muted);
+}
+
+.input-theme:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--theme-focus-ring);
+}
