@@ -44,8 +44,10 @@ func NewMiddleware(
 	converter transperr.ErrorConverter,
 ) Middleware {
 	return &middleware{
-		log: log,
-		cfg: cfg,
+		log:       log,
+		cfg:       cfg,
+		httpResp:  httpResp,
+		converter: converter,
 	}
 }
 

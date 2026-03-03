@@ -30,6 +30,8 @@ func (e *errorConverter) ToHTTP(err error) TransportError {
 			code = http.StatusNotFound
 		case srverr.ErrorTypeUnauthorized:
 			code = http.StatusUnauthorized
+		case srverr.ErrorTypeForbidden:
+			code = http.StatusForbidden
 		default:
 			code = http.StatusInternalServerError
 		}

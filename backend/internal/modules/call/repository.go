@@ -279,7 +279,8 @@ func (r *repositoryImpl) getChillCallsByCompanyTelephonyIDAndExternalCallID(
 		if err != nil {
 			return nil, fmt.Errorf("call.getChillCallsByCompanyTelephonyIDAndCallID: %w", err)
 		}
-		calls = append(calls, &call)
+		callCopy := call
+		calls = append(calls, &callCopy)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("call.getChillCallsByCompanyTelephonyIDAndCallID: %w", err)
@@ -432,7 +433,8 @@ func (r *repositoryImpl) getCallsDetails(ctx context.Context, tx pgx.Tx, callIDs
 		); err != nil {
 			return nil, fmt.Errorf("call.getCallsDetails: %w", err)
 		}
-		result[details.CallID] = &details
+		detailsCopy := details
+		result[details.CallID] = &detailsCopy
 	}
 	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("call.getCallsDetails: %w", err)
