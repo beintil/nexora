@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ChevronDown, ChevronRight, Calendar, SlidersHorizontal } from "lucide-react";
 import type {
     CallsListItem,
@@ -60,14 +60,22 @@ const STATUS_BADGE_CLASS: Record<string, string> = {
     call_event_status_queued: "bg-slate-100 text-slate-600 border-slate-200",
 };
 
+interface CallsPageLocationState {
+    initialStatus?: string;
+    initialDirection?: CallDirection | "all";
+}
+
 export default function CallsPage() {
+    const location = useLocation();
+    const locationState = (location.state as CallsPageLocationState | null) ?? null;
+
     const [data, setData] = useState<CallsListResponse | null>(null);
     const [loading, setLoading] = useState<LoadingState>("idle");
     const [error, setError] = useState<string | null>(null);
 
     const [page, setPage] = useState(0);
-    const [direction, setDirection] = useState<CallDirection | "all">("all");
-    const [status, setStatus] = useState<string | "all">("all");
+    const [direction, setDirection] = useState<CallDirection | "all">(locationState?.initialDirection ?? "all");
+    const [status, setStatus] = useState<string | "all">(locationState?.initialStatus ?? "all");
     const [dateFrom, setDateFrom] = useState<string>(() => {
         const d = new Date();
         d.setDate(d.getDate() - 6);

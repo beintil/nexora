@@ -26,34 +26,6 @@ const ALL_DASHBOARDS: DashboardMeta[] = [
         path: "/calls",
         icon: Phone,
     },
-    {
-        id: "missed",
-        title: "Пропущенные звонки",
-        description: "Детализация пропущенных, время ответа, повторные попытки",
-        path: "/calls",
-        icon: PhoneMissed,
-    },
-    {
-        id: "analytics",
-        title: "Аналитика звонков",
-        description: "Динамика по дням, пиковые часы, распределение по номерам",
-        path: "/analytics",
-        icon: BarChart3,
-    },
-    {
-        id: "leads",
-        title: "Лиды и конверсия",
-        description: "Лиды из звонков, конверсия в сделку, воронка",
-        path: "/analytics",
-        icon: Users,
-    },
-    {
-        id: "integrations",
-        title: "Интеграции",
-        description: "Подключённые номера, SIP, статусы провайдеров",
-        path: "/settings",
-        icon: Settings,
-    },
 ]
 
 export default function DashboardsListPage() {

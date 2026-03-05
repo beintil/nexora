@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Phone, PhoneCall, PhoneMissed } from "lucide-react";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { getCallMetrics } from "../api/metrics";
@@ -20,6 +21,8 @@ function yesterdayISO(): string {
 }
 
 export default function DashboardPage() {
+    const navigate = useNavigate();
+
     const [metrics, setMetrics] = useState<Awaited<ReturnType<typeof getCallMetrics>> | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -63,25 +66,42 @@ export default function DashboardPage() {
 
     const cards = [
         {
+            id: "all",
             icon: Phone,
             title: "Всего звонков",
             value: loading ? "—" : String(metrics?.summary?.total ?? 0),
             chartColor: CHART_COLORS.total,
             sparkData: sparkDataTotal,
+            onClick: () => navigate("/calls"),
         },
         {
+            id: "answered",
             icon: PhoneCall,
             title: "Отвеченных звонков",
             value: loading ? "—" : String(metrics?.summary?.answered ?? 0),
             chartColor: CHART_COLORS.answered,
             sparkData: sparkDataAnswered,
+            onClick: () =>
+                navigate("/calls", {
+                    state: {
+                        initialStatus: "call_event_status_completed",
+                    },
+                }),
         },
         {
+            id: "missed",
             icon: PhoneMissed,
             title: "Пропущенных",
             value: loading ? "—" : String(metrics?.summary?.missed ?? 0),
             chartColor: CHART_COLORS.missed,
             sparkData: sparkDataMissed,
+            onClick: () =>
+                navigate("/calls", {
+                    state: {
+                        initialStatus: "call_event_status_no_answer",
+                        initialDirection: "call_direction_inbound",
+                    },
+                }),
         },
     ];
 
@@ -121,10 +141,11 @@ export default function DashboardPage() {
                     </div>
                 )}
                 <div className="grid gap-4 sm:grid-cols-3">
-                    {cards.map(({ icon: Icon, title, value, chartColor, sparkData }, idx) => (
+                    {cards.map(({ id, icon: Icon, title, value, chartColor, sparkData, onClick }, idx) => (
                         <div
-                            key={title}
-                            className="rounded-xl shadow-sm p-4 border"
+                            key={id}
+                            className="rounded-xl shadow-sm p-4 border cursor-pointer"
+                            onClick={onClick}
                             style={{
                                 backgroundColor: "var(--theme-bg-card)",
                                 borderColor: "var(--theme-border)",
