@@ -1,6 +1,7 @@
 package twilio
 
 import (
+	"telephony/internal/modules/telephony/webhook"
 	"telephony/internal/runner"
 	"telephony/internal/shared/response"
 	transperr "telephony/internal/shared/transport_error"
@@ -20,7 +21,7 @@ type handlerV1 struct {
 func NewRunnerHandlerV1(
 	router *mux.Router,
 
-	service Service,
+	call webhook.TelephonyCall,
 
 	httpResp response.HttpResponse,
 	converter transperr.ErrorConverter,
@@ -32,7 +33,7 @@ func NewRunnerHandlerV1(
 
 		httpResp: httpResp,
 
-		Handler: NewHandler(service, httpResp, converter, validationFormat),
+		Handler: NewHandler(call, httpResp, converter, validationFormat),
 	}
 }
 

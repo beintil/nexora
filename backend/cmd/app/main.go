@@ -15,7 +15,11 @@ import (
 	"telephony/internal/modules/call_events"
 	"telephony/internal/modules/company"
 	"telephony/internal/modules/countries"
-	"telephony/internal/modules/telephony/twilio"
+	telephonywebhook "telephony/internal/modules/telephony/webhook"
+	mango2 "telephony/internal/modules/telephony/webhook/mango"
+	mts2 "telephony/internal/modules/telephony/webhook/mts"
+	twilio2 "telephony/internal/modules/telephony/webhook/twilio"
+	zadarma2 "telephony/internal/modules/telephony/webhook/zadarma"
 	"telephony/internal/modules/telephony_ingestion_pipeline"
 	"telephony/internal/modules/user"
 	"telephony/internal/runner"
@@ -155,8 +159,7 @@ func initBusinessLogic(
 	callService := call.NewService(callEventsService, callRepos, transaction)
 	companyService := company.NewService(callService, companyRepos, transaction)
 	telephonyIngestionPipelineService := telephony_ingestion_pipeline.NewService(countriesService, callService, companyService, transaction)
-
-	twilioService := twilio.NewService(telephonyIngestionPipelineService)
+	telephonyCallService := telephonywebhook.NewTelephonyCall(telephonyIngestionPipelineService)
 
 	s3Storage, err := yandexstorage.NewClient(
 		cfg.S3.AccessKeyID,
@@ -182,7 +185,10 @@ func initBusinessLogic(
 		user.NewRunnerHandlerV1(router, userService, httpResp, convert, cfg.Auth.JWTSecret),
 		call.NewRunnerHandlerV1(router, callService, httpResp, convert),
 		company.NewRunnerHandlerV1(router, companyService, httpResp, convert),
-		twilio.NewRunnerHandlerV1(router, twilioService, httpResp, convert, validationFormat),
+		twilio2.NewRunnerHandlerV1(router, telephonyCallService, httpResp, convert, validationFormat),
+		mango2.NewRunnerHandlerV1(router, telephonyCallService, httpResp, convert, validationFormat),
+		zadarma2.NewRunnerHandlerV1(router, telephonyCallService, httpResp, convert, validationFormat),
+		mts2.NewRunnerHandlerV1(router, telephonyCallService, httpResp, convert, validationFormat),
 	)
 
 	runner.InitCronTasks(log,

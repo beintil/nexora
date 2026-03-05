@@ -1,16 +1,14 @@
 package dto
 
-import (
-	"telephony/internal/domain"
-	"telephony/models"
-)
+import "telephony/internal/modules/telephony/entity"
 
-// TwilioCallStatusFormToDomain преобразует DTO из Swagger (TwilioVoiceStatusCallbackForm) в доменную модель.
-func TwilioCallStatusFormToDomain(d *models.TwilioVoiceStatusCallbackForm) *domain.TwilioCallStatusCallback {
+// TwilioCallStatusFormToDomain преобразует transport-форму Twilio
+// в нормализованную структуру вебхука телефонии (telephony/entity).
+func TwilioCallStatusFormToDomain(d *entity.TwilioVoiceStatusCallbackForm) *entity.TwilioCallStatusCallback {
 	if d == nil {
 		return nil
 	}
-	return &domain.TwilioCallStatusCallback{
+	return &entity.TwilioCallStatusCallback{
 		CallSid:           d.CallSid,
 		ParentCallSid:     d.ParentCallSid,
 		AccountSid:        d.AccountSid,

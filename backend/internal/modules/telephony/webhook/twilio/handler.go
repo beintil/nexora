@@ -3,12 +3,14 @@ package twilio
 import (
 	"encoding/json"
 	"net/http"
+	"telephony/internal/domain"
+	"telephony/internal/modules/telephony/entity"
+	"telephony/internal/modules/telephony/webhook"
 	"telephony/internal/shared/dto"
 	"telephony/internal/shared/middleware"
 	"telephony/internal/shared/response"
 	srverr "telephony/internal/shared/server_error"
 	transperr "telephony/internal/shared/transport_error"
-	"telephony/models"
 
 	"github.com/go-openapi/strfmt"
 	"github.com/gorilla/mux"
@@ -19,7 +21,7 @@ const (
 )
 
 type webhookHandler struct {
-	service Service
+	call webhook.TelephonyCall
 
 	httpResponse response.HttpResponse
 	converter    transperr.ErrorConverter
@@ -28,7 +30,7 @@ type webhookHandler struct {
 }
 
 func NewHandler(
-	service Service,
+	call webhook.TelephonyCall,
 
 	httpResponse response.HttpResponse,
 	converter transperr.ErrorConverter,
@@ -36,7 +38,7 @@ func NewHandler(
 	validationFormat strfmt.Registry,
 ) Handler {
 	return &webhookHandler{
-		service: service,
+		call: call,
 
 		httpResponse: httpResponse,
 		converter:    converter,
@@ -51,7 +53,7 @@ func (m *webhookHandler) Run(router *mux.Router, mid middleware.Middleware) {
 }
 
 func (m *webhookHandler) handleTwilioVoiceStatus(w http.ResponseWriter, r *http.Request) {
-	var req models.TwilioVoiceStatusCallbackForm
+	var req entity.TwilioVoiceStatusCallbackForm
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		sErr := srverr.NewServerError(ServiceErrorTwilioBadRequest, "twilio.handleTwilioVoiceStatus/decode").SetError(err.Error())
 		m.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(m.converter.ToHTTP(sErr)))
@@ -59,7 +61,19 @@ func (m *webhookHandler) handleTwilioVoiceStatus(w http.ResponseWriter, r *http.
 	}
 
 	msg := dto.TwilioCallStatusFormToDomain(&req)
-	sErr := m.service.VoiceStatus(r.Context(), msg)
+	if msg == nil {
+		sErr := srverr.NewServerError(ServiceErrorTwilioBadRequest, "twilio.handleTwilioVoiceStatus/validate").SetError("invalid request")
+		m.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(m.converter.ToHTTP(sErr)))
+		return
+	}
+	worker, err := entity.TwilioToCallWorker(msg)
+	if err != nil {
+		sErr := srverr.NewServerError(ServiceErrorTwilioBadRequest, "twilio.handleTwilioVoiceStatus/convert").SetError(err.Error())
+		m.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(m.converter.ToHTTP(sErr)))
+		return
+	}
+
+	sErr := m.call.VoiceStatus(r.Context(), domain.Twilio, worker)
 	if sErr != nil {
 		m.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(m.converter.ToHTTP(sErr)))
 		return
