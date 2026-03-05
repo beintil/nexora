@@ -11,11 +11,12 @@ import (
 
 type accessClaims struct {
 	jwt.RegisteredClaims
-	Role domain.Role `json:"user_id"`
+	Role      domain.Role `json:"role"`
+	CompanyID string      `json:"company_id"`
 }
 
 // BuildAccessToken создаёт JWT access-токен для пользователя.
-func BuildAccessToken(userID uuid.UUID, role domain.Role, secret []byte, ttlSec time.Duration) (string, error) {
+func BuildAccessToken(userID uuid.UUID, companyID uuid.UUID, role domain.Role, secret []byte, ttlSec time.Duration) (string, error) {
 	now := time.Now()
 	claims := accessClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -23,7 +24,8 @@ func BuildAccessToken(userID uuid.UUID, role domain.Role, secret []byte, ttlSec 
 			IssuedAt:  jwt.NewNumericDate(now),
 			Subject:   userID.String(),
 		},
-		Role: role,
+		Role:      role,
+		CompanyID: companyID.String(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(secret)
@@ -48,9 +50,17 @@ func ParseAccessToken(tokenString string, secret []byte) (user *domain.UserFromA
 	if err != nil {
 		return nil, fmt.Errorf("ParseAccessToken: invalid user id")
 	}
+	var companyID uuid.UUID
+	if claims.CompanyID != "" {
+		companyID, err = uuid.Parse(claims.CompanyID)
+		if err != nil {
+			return nil, fmt.Errorf("ParseAccessToken: invalid company id")
+		}
+	}
 	return &domain.UserFromAccess{
-		ID:   id,
-		Role: claims.Role,
+		ID:        id,
+		CompanyID: companyID,
+		Role:      claims.Role,
 	}, nil
 }
 

@@ -5,6 +5,7 @@ import AppLayout from "./layouts/AppLayout"
 import DashboardPage from "./pages/DashboardPage"
 import DashboardsListPage from "./pages/DashboardsListPage"
 import CallsPage from "./pages/CallsPage"
+import CallDetailPage from "./pages/CallDetailPage"
 import SettingsPage from "./pages/SettingsPage"
 import AnalyticsPage from "./pages/AnalyticsPage"
 import ProfileEditPage from "./pages/ProfileEditPage"
@@ -19,6 +20,7 @@ function App() {
                     <Route path="/dashboard" element={<DashboardPage />} />
                     <Route path="/dashboards" element={<DashboardsListPage />} />
                     <Route path="/calls" element={<CallsPage />} />
+                    <Route path="/calls/:id" element={<CallDetailPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/analytics" element={<AnalyticsPage />} />
                     <Route path="/profile" element={<ProfileEditPage />} />

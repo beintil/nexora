@@ -180,6 +180,8 @@ func initBusinessLogic(
 	runner.InitHandlers(router, mid,
 		auth.NewRunnerHandlerV1(router, authService, httpResp, convert, cfg, log),
 		user.NewRunnerHandlerV1(router, userService, httpResp, convert, cfg.Auth.JWTSecret),
+		call.NewRunnerHandlerV1(router, callService, httpResp, convert),
+		company.NewRunnerHandlerV1(router, companyService, httpResp, convert),
 		twilio.NewRunnerHandlerV1(router, twilioService, httpResp, convert, validationFormat),
 	)
 

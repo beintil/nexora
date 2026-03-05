@@ -7,8 +7,9 @@ import (
 )
 
 type UserFromAccess struct {
-	ID   uuid.UUID
-	Role Role
+	ID        uuid.UUID
+	CompanyID uuid.UUID
+	Role      Role
 }
 
 // User — пользователь системы.

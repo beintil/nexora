@@ -122,3 +122,57 @@ type CallDetails struct {
 	CreatedAt         time.Time // Время создания записи
 	UpdatedAt         time.Time // Время последнего обновления
 }
+
+type CallSummary struct {
+	ID                 uuid.UUID
+	CompanyTelephonyID uuid.UUID
+
+	FromNumber string
+	ToNumber   string
+	Direction  CallDirection
+
+	CreatedAt time.Time
+	UpdatedAt time.Time
+
+	LastStatus  CallEventStatus
+	HasChildren bool // true if call has child calls (for list UI)
+}
+
+type CallListFilters struct {
+	CompanyID          uuid.UUID
+	Limit              int
+	Offset             int
+	Page               int // 1-based, from request
+	From               *time.Time
+	To                 *time.Time
+	Direction          *CallDirection
+	CompanyTelephonyID *uuid.UUID
+	Status             *CallEventStatus
+}
+
+type CallListPage struct {
+	Items []*CallSummary
+	Meta  PageMeta
+}
+
+// CallMetrics описывает агрегированные метрики по звонкам компании за период.
+type CallMetrics struct {
+	CompanyID   uuid.UUID
+	From        time.Time
+	To          time.Time
+	Total       int
+	Answered    int
+	Missed      int
+	ByDirection map[CallDirection]int
+}
+
+type CallMetricsTimeseriesPoint struct {
+	Date     time.Time
+	Total    int
+	Answered int
+	Missed   int
+}
+
+type CallMetricsTimeseries struct {
+	Points []*CallMetricsTimeseriesPoint
+}

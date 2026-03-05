@@ -6,7 +6,7 @@ import "react-easy-crop/react-easy-crop.css"
 import { useProfileContext } from "../context/ProfileContext"
 import { updateProfile, uploadAvatar } from "../api/profile"
 import { getCroppedImg } from "../utils/cropImage"
-import { ArrowLeft, Loader2, User } from "lucide-react"
+import { ArrowLeft, Loader2, User, Camera, CheckCircle2, AlertCircle } from "lucide-react"
 
 const ALLOWED_AVATAR_TYPES = ["image/jpeg", "image/png", "image/webp"]
 
@@ -40,8 +40,7 @@ export default function ProfileEditPage() {
         setAvatarPreview(profile.avatar_url ?? null)
     }, [profile?.id, profile?.full_name, profile?.avatar_url])
 
-    const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]
+    const processFile = (file: File | null) => {
         setError("")
         if (!file) {
             setAvatarFile(null)
@@ -64,6 +63,16 @@ export default function ProfileEditPage() {
         setLastCroppedAreaPixels(null)
         setCropModalOpen(true)
     }
+
+    const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        processFile(e.target.files?.[0] ?? null)
+    }
+
+    const onDrop = (e: React.DragEvent) => {
+        e.preventDefault()
+        processFile(e.dataTransfer.files?.[0] ?? null)
+    }
+    const onDragOver = (e: React.DragEvent) => e.preventDefault()
 
     const onCropComplete = useCallback((_: Area, croppedAreaPixels: Area) => {
         setLastCroppedAreaPixels(croppedAreaPixels)
@@ -123,17 +132,20 @@ export default function ProfileEditPage() {
 
     if (profileLoading && !profile) {
         return (
-            <div className="p-8 flex items-center justify-center min-h-[200px]" style={{ backgroundColor: "var(--theme-bg-page)" }}>
-                <Loader2 className="h-8 w-8 animate-spin" style={{ color: "var(--theme-text-muted)" }} />
+            <div className="flex min-h-[40vh] flex-1 items-center justify-center bg-slate-50/50">
+                <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
             </div>
         )
     }
 
     if (!profile) {
         return (
-            <div className="p-8" style={{ backgroundColor: "var(--theme-bg-page)" }}>
-                <p style={{ color: "var(--theme-text-muted)" }}>Профиль не загружен.</p>
-                <Link to="/dashboard" className="font-medium hover:underline mt-2 inline-block" style={{ color: "var(--theme-text)" }}>
+            <div className="flex flex-1 flex-col items-center justify-center gap-4 bg-slate-50/50 px-6 py-12">
+                <p className="text-sm text-slate-500">Профиль не загружен.</p>
+                <Link
+                    to="/dashboard"
+                    className="text-sm font-medium text-slate-700 transition hover:text-slate-900"
+                >
                     На главную
                 </Link>
             </div>
@@ -141,110 +153,108 @@ export default function ProfileEditPage() {
     }
 
     return (
-        <div className="p-8 max-w-lg" style={{ backgroundColor: "var(--theme-bg-page)" }}>
-            <Link
-                to="/dashboard"
-                className="inline-flex items-center gap-2 font-medium mb-6 hover:underline"
-                style={{ color: "var(--theme-text-muted)" }}
-            >
-                <ArrowLeft className="h-4 w-4" />
-                Назад
-            </Link>
-            <h1 className="text-2xl font-semibold mb-2" style={{ color: "var(--theme-text)" }}>Редактирование профиля</h1>
-            <p className="text-sm mb-8" style={{ color: "var(--theme-text-muted)" }}>
-                Укажите ФИО и при необходимости загрузите новое фото профиля.
-            </p>
+        <div className="min-h-0 flex-1 bg-[#f5f4f2]">
+            <div className="mx-auto max-w-xl px-4 py-10 sm:px-6">
+                <Link
+                    to="/dashboard"
+                    className="inline-flex items-center gap-2 text-sm text-slate-500 transition hover:text-slate-800"
+                >
+                    <ArrowLeft className="h-4 w-4" />
+                    Назад
+                </Link>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-                <div>
-                    <label htmlFor="full_name" className="block text-sm font-medium mb-2" style={{ color: "var(--theme-text)" }}>
-                        ФИО
-                    </label>
-                    <input
-                        id="full_name"
-                        type="text"
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                        placeholder="Иван Иванов"
-                        className="input-theme w-full px-4 py-3 rounded-xl border focus:outline-none"
-                        style={{
-                            backgroundColor: "var(--theme-input-bg)",
-                            borderColor: "var(--theme-border)",
-                            color: "var(--theme-text)",
-                        }}
-                        maxLength={255}
-                    />
-                </div>
-
-                <div>
-                    <label className="block text-sm font-medium mb-2" style={{ color: "var(--theme-text)" }}>Аватар</label>
-                    <div className="flex items-center gap-4">
-                        <button
-                            type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                            className="flex items-center justify-center w-24 h-24 rounded-full transition overflow-hidden"
-                            style={{ backgroundColor: "var(--theme-hover)", color: "var(--theme-text-muted)" }}
-                        >
-                            {avatarPreview && !avatarPreviewError ? (
-                                <img
-                                    src={avatarPreview}
-                                    alt=""
-                                    className="w-full h-full object-cover"
-                                    onError={() => setAvatarPreviewError(true)}
+                <form onSubmit={handleSubmit} className="mt-10">
+                    {/* Один блок: аватар + имя в одном потоке */}
+                    <div className="rounded-2xl bg-white/90 p-8 shadow-[0_2px_20px_rgba(0,0,0,0.06)] backdrop-blur-sm">
+                        <div className="flex flex-col items-center gap-8 sm:flex-row sm:items-start sm:gap-10">
+                            <button
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                onDrop={onDrop}
+                                onDragOver={onDragOver}
+                                className="group relative flex h-32 w-32 shrink-0 overflow-hidden rounded-full ring-2 ring-slate-200/80 ring-offset-4 ring-offset-white transition hover:ring-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2"
+                            >
+                                {avatarPreview && !avatarPreviewError ? (
+                                    <img
+                                        src={avatarPreview}
+                                        alt=""
+                                        className="h-full w-full object-cover"
+                                        onError={() => setAvatarPreviewError(true)}
+                                    />
+                                ) : (
+                                    <span className="flex h-full w-full items-center justify-center bg-slate-100">
+                                        <User className="h-14 w-14 text-slate-400" />
+                                    </span>
+                                )}
+                                <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 opacity-0 transition group-hover:opacity-100">
+                                    <Camera className="h-8 w-8 text-white" />
+                                </span>
+                            </button>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept={ALLOWED_AVATAR_TYPES.join(",")}
+                                onChange={onFileChange}
+                                className="hidden"
+                            />
+                            <div className="min-w-0 flex-1 text-center sm:text-left">
+                                <input
+                                    id="full_name"
+                                    type="text"
+                                    value={fullName}
+                                    onChange={(e) => setFullName(e.target.value)}
+                                    placeholder="Ваше имя"
+                                    className="w-full border-0 border-b-2 border-slate-200 bg-transparent pb-2 text-xl font-medium text-slate-900 placeholder-slate-400 transition focus:border-slate-400 focus:outline-none"
+                                    maxLength={255}
                                 />
-                            ) : (
-                                <User className="h-10 w-10" />
-                            )}
-                        </button>
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept={ALLOWED_AVATAR_TYPES.join(",")}
-                            onChange={onFileChange}
-                            className="hidden"
-                        />
-                        <div className="text-sm" style={{ color: "var(--theme-text-muted)" }}>
-                            Нажмите на круг, чтобы выбрать изображение (JPEG, PNG или WebP, до 5 МБ).
+                                <p className="mt-1 text-xs text-slate-400">{fullName.length}/255</p>
+                                {profile?.email && (
+                                    <p className="mt-3 text-sm text-slate-500">{profile.email}</p>
+                                )}
+                                <p className="mt-4 text-sm text-slate-500">
+                                    Нажмите на фото, чтобы заменить. JPEG, PNG или WebP, до 5 МБ.
+                                </p>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                {error && (
-                    <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-                        {error}
-                    </div>
-                )}
-                {success && (
-                    <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-                        Изменения сохранены.
-                    </div>
-                )}
-
-                <button
-                    type="submit"
-                    disabled={saving}
-                    className="w-full py-3 rounded-xl font-medium transition disabled:opacity-60 disabled:cursor-not-allowed min-h-[48px]"
-                    style={{
-                        backgroundColor: "var(--theme-btn-primary-bg)",
-                        color: "var(--theme-btn-primary-text)",
-                    }}
-                >
-                    {saving ? (
-                        <span className="inline-flex items-center gap-2">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Сохранение...
-                        </span>
-                    ) : (
-                        "Сохранить"
+                    {error && (
+                        <div className="mt-6 flex items-center gap-3 rounded-xl bg-red-50/90 px-4 py-3 text-sm text-red-800">
+                            <AlertCircle className="h-4 w-4 shrink-0" />
+                            {error}
+                        </div>
                     )}
-                </button>
-            </form>
+                    {success && (
+                        <div className="mt-6 flex items-center gap-3 rounded-xl bg-emerald-50/90 px-4 py-3 text-sm text-emerald-800">
+                            <CheckCircle2 className="h-4 w-4 shrink-0" />
+                            Сохранено.
+                        </div>
+                    )}
+
+                    <div className="mt-8 flex justify-end">
+                        <button
+                            type="submit"
+                            disabled={saving}
+                            className="rounded-full bg-slate-900 px-8 py-3 text-sm font-medium text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 disabled:opacity-60"
+                        >
+                            {saving ? (
+                                <>
+                                    <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+                                    Сохранение...
+                                </>
+                            ) : (
+                                "Сохранить"
+                            )}
+                        </button>
+                    </div>
+                </form>
+            </div>
 
             {cropModalOpen && cropImageUrl && (
-                <div className="fixed inset-0 z-50 flex flex-col bg-black/80">
-                    <div className="flex flex-1 flex-col items-center justify-center p-4">
-                        <p className="mb-4 text-white">Расположите фото: двигайте, приближайте, поворачивайте</p>
-                        <div className="relative h-[70vmin] w-[70vmin] max-h-[400px] max-w-[400px] rounded-full overflow-hidden bg-slate-800">
+                <div className="fixed inset-0 z-50 flex flex-col bg-slate-900/95 backdrop-blur-sm">
+                    <div className="flex flex-1 flex-col items-center justify-center p-6">
+                        <p className="mb-5 text-sm font-medium text-slate-300">Настройте кадр: перемещайте, масштабируйте, поворачивайте</p>
+                        <div className="relative h-[70vmin] w-[70vmin] max-h-[380px] max-w-[380px] rounded-full overflow-hidden bg-slate-800 shadow-2xl ring-1 ring-white/10">
                             <Cropper
                                 image={cropImageUrl}
                                 crop={crop}
@@ -263,9 +273,9 @@ export default function ProfileEditPage() {
                                 maxZoom={3}
                             />
                         </div>
-                        <div className="mt-6 flex w-full max-w-[400px] flex-col gap-4">
+                        <div className="mt-6 flex w-full max-w-[380px] flex-col gap-4">
                             <div>
-                                <label className="mb-1 block text-xs text-slate-300">Масштаб</label>
+                                <label className="mb-1.5 block text-xs font-medium text-slate-400">Масштаб</label>
                                 <input
                                     type="range"
                                     min={0.5}
@@ -273,11 +283,11 @@ export default function ProfileEditPage() {
                                     step={0.1}
                                     value={zoom}
                                     onChange={(e) => setZoom(Number(e.target.value))}
-                                    className="w-full accent-slate-100"
+                                    className="w-full accent-slate-400"
                                 />
                             </div>
                             <div>
-                                <label className="mb-1 block text-xs text-slate-300">Поворот</label>
+                                <label className="mb-1.5 block text-xs font-medium text-slate-400">Поворот</label>
                                 <input
                                     type="range"
                                     min={0}
@@ -285,15 +295,15 @@ export default function ProfileEditPage() {
                                     step={1}
                                     value={rotation}
                                     onChange={(e) => setRotation(Number(e.target.value))}
-                                    className="w-full accent-slate-100"
+                                    className="w-full accent-slate-400"
                                 />
                             </div>
                         </div>
-                        <div className="mt-6 flex gap-3">
+                        <div className="mt-8 flex gap-3">
                             <button
                                 type="button"
                                 onClick={closeCropModal}
-                                className="rounded-xl border border-slate-400 bg-transparent px-5 py-2.5 text-white hover:bg-white/10"
+                                className="rounded-lg border border-slate-500 bg-transparent px-4 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-white/10 hover:text-white"
                             >
                                 Отмена
                             </button>
@@ -301,7 +311,7 @@ export default function ProfileEditPage() {
                                 type="button"
                                 onClick={applyCrop}
                                 disabled={cropApplying || !lastCroppedAreaPixels}
-                                className="rounded-xl bg-white px-5 py-2.5 text-slate-900 font-medium hover:opacity-90 disabled:opacity-50"
+                                className="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-lg transition hover:bg-slate-100 disabled:opacity-50"
                             >
                                 {cropApplying ? (
                                     <span className="inline-flex items-center gap-2">

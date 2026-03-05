@@ -209,7 +209,7 @@ func TestService_CallWorkerBaseCreateSuccess(t *testing.T) {
 	defer log.Sync()
 
 	os.Setenv("TEST", "true")
-	os.Setenv("CONFIG_PATH", "/Users/darkness/telephony/configs/local.json")
+	os.Setenv("CONFIG_PATH", "/Users/darkness/nexora/backend/configs/local.json")
 
 	cfg := config.MustConfig(log)
 

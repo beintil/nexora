@@ -44,14 +44,18 @@ function AppLayoutContent() {
 
     return (
         <div className="min-h-screen flex" style={{ backgroundColor: "var(--theme-bg-page)" }}>
-            <aside className="w-64 flex flex-col shrink-0 shadow-sm border-r border-[var(--theme-border)]" style={{ backgroundColor: "var(--theme-bg-sidebar)" }}>
-                <div className="p-5 border-b border-[var(--theme-border)]">
-                    <span className="text-lg font-semibold tracking-tight" style={{ fontFamily: '"Cormorant Garamond", Georgia, serif', color: "var(--theme-text)" }}>Nexora</span>
+            <aside className="w-60 flex flex-col shrink-0 border-r border-slate-200/80 bg-white shadow-[4px_0_24px_-4px_rgba(0,0,0,0.06)]">
+                <div className="px-5 py-6 border-b border-slate-100">
+                    <span className="text-xl font-bold tracking-tight text-slate-800" style={{ fontFamily: '"Cormorant Garamond", Georgia, serif' }}>
+                        Nexora
+                    </span>
                 </div>
-                <nav className="flex-1 py-4 px-3 overflow-auto">
+                <nav className="flex-1 py-5 px-3 overflow-auto">
                     {MENU_GROUPS.map((group) => (
-                        <div key={group.label} className="mb-6">
-                            <p className="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--theme-text-muted)" }}>{group.label}</p>
+                        <div key={group.label} className="mb-5">
+                            <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+                                {group.label}
+                            </p>
                             <div className="space-y-0.5">
                                 {DEFAULT_MENU_ITEMS.filter((i) => group.ids.includes(i.id)).map((item) => {
                                     const Icon = iconByKey[item.icon] ?? Home
@@ -59,12 +63,23 @@ function AppLayoutContent() {
                                         <NavLink
                                             key={item.id}
                                             to={item.path}
+                                            end={item.path !== "/calls"}
                                             className={({ isActive }) =>
-                                                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${isActive ? "nav-link-active" : "nav-link-inactive"}`
+                                                `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+                                                    isActive
+                                                        ? "bg-indigo-50 text-indigo-700 shadow-sm"
+                                                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                                                }`
                                             }
                                         >
-                                            <Icon className="h-4 w-4 shrink-0" />
-                                            {item.label}
+                                            {({ isActive }) => (
+                                                <>
+                                                    <span className={`flex items-center justify-center w-8 h-8 rounded-lg shrink-0 transition-colors ${isActive ? "bg-indigo-100 text-indigo-600" : "bg-transparent"}`}>
+                                                        <Icon className="h-4 w-4" />
+                                                    </span>
+                                                    <span>{item.label}</span>
+                                                </>
+                                            )}
                                         </NavLink>
                                     )
                                 })}
@@ -72,37 +87,36 @@ function AppLayoutContent() {
                         </div>
                     ))}
                 </nav>
-                <div className="p-3 border-t border-[var(--theme-border)]">
+                <div className="p-3 border-t border-slate-100 bg-slate-50/50">
                     <button
                         onClick={logout}
-                        className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm transition nav-link-inactive mb-3"
+                        className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors mb-2"
                     >
                         <LogOut className="h-4 w-4 shrink-0" />
                         Выйти
                     </button>
                     <Link
                         to="/profile"
-                        className="flex items-center gap-3 px-3 py-3 rounded-xl transition mt-3"
-                        style={{ backgroundColor: "var(--theme-hover)" }}
+                        className="flex items-center gap-3 px-3 py-3 rounded-xl bg-white border border-slate-200/80 shadow-sm hover:shadow transition-shadow"
                     >
                         {profile?.avatar_url && !avatarImgError ? (
                             <img
                                 src={profile.avatar_url}
                                 alt=""
-                                className="w-10 h-10 rounded-full object-cover border border-[var(--theme-border)]"
+                                className="w-10 h-10 rounded-xl object-cover border border-slate-200"
                                 onError={() => setAvatarImgError(true)}
                             />
                         ) : (
-                            <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium" style={{ backgroundColor: "var(--theme-active)", color: "var(--theme-text-muted)" }} aria-hidden>
+                            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-semibold bg-slate-200 text-slate-600 shrink-0" aria-hidden>
                                 {initials || <User className="h-4 w-4" />}
                             </div>
                         )}
                         <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium truncate" style={{ color: "var(--theme-text)" }}>{displayName || "Профиль"}</p>
+                            <p className="text-sm font-semibold truncate text-slate-800">{displayName || "Профиль"}</p>
                             {profile?.role_id !== undefined && (
-                                <p className="text-xs truncate mt-0.5" style={{ color: "var(--theme-text-muted)" }}>{roleLabel(profile.role_id)}</p>
+                                <p className="text-xs truncate mt-0.5 text-slate-500">{roleLabel(profile.role_id)}</p>
                             )}
-                            <p className="text-xs truncate mt-0.5" style={{ color: "var(--theme-text-muted)" }}>{profile?.email ?? ""}</p>
+                            <p className="text-xs truncate mt-0.5 text-slate-400">{profile?.email ?? ""}</p>
                         </div>
                     </Link>
                 </div>

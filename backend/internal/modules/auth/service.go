@@ -434,7 +434,7 @@ func (s *service) issueTokens(ctx context.Context, user *domain.User) (*domain.A
 
 	accessTTL := time.Duration(s.cfg.Auth.AccessTokenTTLSec) * time.Second
 	refreshTTL := time.Duration(s.cfg.Auth.RefreshTokenTTLSec) * time.Second
-	accessToken, err := jwt.BuildAccessToken(user.ID, user.RoleID, []byte(s.cfg.Auth.JWTSecret), accessTTL)
+	accessToken, err := jwt.BuildAccessToken(user.ID, user.CompanyID, user.RoleID, []byte(s.cfg.Auth.JWTSecret), accessTTL)
 	if err != nil {
 		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "auth.issueTokens/access").SetError(err.Error())
 	}

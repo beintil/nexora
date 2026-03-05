@@ -8,5 +8,9 @@ type Telephony struct {
 type TelephonyName string
 
 const (
-	Twilio TelephonyName = "Twilio"
+	Twilio  TelephonyName = "Twilio"
+	Mango   TelephonyName = "Mango"
+	Zadarma TelephonyName = "Zadarma"
+	MTS     TelephonyName = "MTS"
+	Beeline TelephonyName = "Beeline"
 )
