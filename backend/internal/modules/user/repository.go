@@ -22,6 +22,9 @@ type repository interface {
 	getUserByID(ctx context.Context, tx pgx.Tx, userID uuid.UUID) (*domain.User, error)
 	getUserByEmail(ctx context.Context, tx pgx.Tx, email string) (*domain.User, error)
 	updateUserProfile(ctx context.Context, tx pgx.Tx, userID uuid.UUID, fullName, avatarURL, avatarID *string) error
+	updateUserPassword(ctx context.Context, tx pgx.Tx, userID uuid.UUID, passwordHash string) error
+	deleteUser(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error
+	getCompanyUsers(ctx context.Context, tx pgx.Tx, companyID uuid.UUID) ([]*domain.User, error)
 }
 
 type repositoryImpl struct{}
@@ -41,8 +44,8 @@ func (r *repositoryImpl) setUserVerified(ctx context.Context, tx pgx.Tx, userID 
 
 func (r *repositoryImpl) createUser(ctx context.Context, tx pgx.Tx, account *domain.User) error {
 	const query = `
-		INSERT INTO users (id, company_id, role_id, email, password_hash, full_name, avatar_url, avatar_id, verified_registration)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO users (id, company_id, role_id, email, password_hash, full_name, avatar_url, avatar_id, verified_registration, is_delete)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING created_at, updated_at`
 	var email, fullName, avatarURL, avatarID *string
 	if account.Email != nil {
@@ -58,7 +61,7 @@ func (r *repositoryImpl) createUser(ctx context.Context, tx pgx.Tx, account *dom
 		avatarID = account.AvatarID
 	}
 	err := tx.QueryRow(ctx, query,
-		account.ID, account.CompanyID, int16(account.RoleID), email, account.PasswordHash, fullName, avatarURL, avatarID, account.VerifiedRegistration,
+		account.ID, account.CompanyID, int16(account.RoleID), email, account.PasswordHash, fullName, avatarURL, avatarID, account.VerifiedRegistration, account.IsDelete,
 	).Scan(&account.CreatedAt, &account.UpdatedAt)
 	if err != nil {
 		if postgres.ErrorIs(err, postgres.DuplicateKeyValueViolatesUniqueConstraint) {
@@ -70,13 +73,13 @@ func (r *repositoryImpl) createUser(ctx context.Context, tx pgx.Tx, account *dom
 }
 
 func (r *repositoryImpl) getUserByEmail(ctx context.Context, tx pgx.Tx, email string) (*domain.User, error) {
-	const query = `SELECT id, company_id, role_id, email, password_hash, full_name, avatar_url, avatar_id, verified_registration, created_at, updated_at
-		FROM users WHERE email = $1`
+	const query = `SELECT id, company_id, role_id, email, password_hash, full_name, avatar_url, avatar_id, verified_registration, is_delete, created_at, updated_at
+		FROM users WHERE email = $1 AND is_delete = false`
 	row := tx.QueryRow(ctx, query, email)
 	var u domain.User
 	var roleID int16
 	var emailPtr, fullNamePtr, avatarURLPtr, avatarIDPtr *string
-	if err := row.Scan(&u.ID, &u.CompanyID, &roleID, &emailPtr, &u.PasswordHash, &fullNamePtr, &avatarURLPtr, &avatarIDPtr, &u.VerifiedRegistration, &u.CreatedAt, &u.UpdatedAt); err != nil {
+	if err := row.Scan(&u.ID, &u.CompanyID, &roleID, &emailPtr, &u.PasswordHash, &fullNamePtr, &avatarURLPtr, &avatarIDPtr, &u.VerifiedRegistration, &u.IsDelete, &u.CreatedAt, &u.UpdatedAt); err != nil {
 		if postgres.ErrorIs(err, postgres.ErrNoRows) {
 			return nil, errRepoUserNotFound
 		}
@@ -91,13 +94,13 @@ func (r *repositoryImpl) getUserByEmail(ctx context.Context, tx pgx.Tx, email st
 }
 
 func (r *repositoryImpl) getUserByID(ctx context.Context, tx pgx.Tx, userID uuid.UUID) (*domain.User, error) {
-	const query = `SELECT id, company_id, role_id, email, password_hash, full_name, avatar_url, avatar_id, verified_registration, created_at, updated_at
-		FROM users WHERE id = $1`
+	const query = `SELECT id, company_id, role_id, email, password_hash, full_name, avatar_url, avatar_id, verified_registration, is_delete, created_at, updated_at
+		FROM users WHERE id = $1 AND is_delete = false`
 	row := tx.QueryRow(ctx, query, userID)
 	var u domain.User
 	var roleID int16
 	var emailPtr, fullNamePtr, avatarURLPtr, avatarIDPtr *string
-	if err := row.Scan(&u.ID, &u.CompanyID, &roleID, &emailPtr, &u.PasswordHash, &fullNamePtr, &avatarURLPtr, &avatarIDPtr, &u.VerifiedRegistration, &u.CreatedAt, &u.UpdatedAt); err != nil {
+	if err := row.Scan(&u.ID, &u.CompanyID, &roleID, &emailPtr, &u.PasswordHash, &fullNamePtr, &avatarURLPtr, &avatarIDPtr, &u.VerifiedRegistration, &u.IsDelete, &u.CreatedAt, &u.UpdatedAt); err != nil {
 		if postgres.ErrorIs(err, postgres.ErrNoRows) {
 			return nil, errRepoUserNotFound
 		}
@@ -114,8 +117,44 @@ func (r *repositoryImpl) getUserByID(ctx context.Context, tx pgx.Tx, userID uuid
 func (r *repositoryImpl) updateUserProfile(ctx context.Context, tx pgx.Tx, userID uuid.UUID, fullName, avatarURL, avatarID *string) error {
 	const query = `UPDATE users SET full_name = COALESCE($2, full_name), avatar_url = COALESCE($3, avatar_url), avatar_id = COALESCE($4, avatar_id), updated_at = NOW() WHERE id = $1`
 	_, err := tx.Exec(ctx, query, userID, fullName, avatarURL, avatarID)
+	return err
+}
+
+func (r *repositoryImpl) updateUserPassword(ctx context.Context, tx pgx.Tx, userID uuid.UUID, passwordHash string) error {
+	const query = `UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1`
+	_, err := tx.Exec(ctx, query, userID, passwordHash)
+	return err
+}
+
+func (r *repositoryImpl) deleteUser(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
+	const query = `UPDATE users SET is_delete = true WHERE id = $1`
+	_, err := tx.Exec(ctx, query, userID)
+	return err
+}
+
+func (r *repositoryImpl) getCompanyUsers(ctx context.Context, tx pgx.Tx, companyID uuid.UUID) ([]*domain.User, error) {
+	const query = `SELECT id, company_id, role_id, email, password_hash, full_name, avatar_url, avatar_id, verified_registration, is_delete, created_at, updated_at
+		FROM users WHERE company_id = $1 AND is_delete = false ORDER BY created_at DESC`
+	rows, err := tx.Query(ctx, query, companyID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	defer rows.Close()
+
+	var users []*domain.User
+	for rows.Next() {
+		var u domain.User
+		var roleID int16
+		var emailPtr, fullNamePtr, avatarURLPtr, avatarIDPtr *string
+		if err := rows.Scan(&u.ID, &u.CompanyID, &roleID, &emailPtr, &u.PasswordHash, &fullNamePtr, &avatarURLPtr, &avatarIDPtr, &u.VerifiedRegistration, &u.IsDelete, &u.CreatedAt, &u.UpdatedAt); err != nil {
+			return nil, err
+		}
+		u.RoleID = domain.Role(roleID)
+		u.Email = emailPtr
+		u.FullName = fullNamePtr
+		u.AvatarURL = avatarURLPtr
+		u.AvatarID = avatarIDPtr
+		users = append(users, &u)
+	}
+	return users, nil
 }

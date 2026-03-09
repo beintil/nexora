@@ -1,14 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTheme, type ThemeChoice } from "../context/ThemeContext";
 import { Monitor, Moon, Sun, Palette } from "lucide-react";
-import {
-    getCompanyTelephony,
-    createCompanyTelephony,
-    deleteCompanyTelephony,
-    getTelephonyDictionary,
-    type CompanyTelephonyItem,
-    type TelephonyDictionaryItem,
-} from "../api/companyTelephony";
+import { useTelephony } from "../hooks/useTelephony";
 
 const THEMES: { value: ThemeChoice; label: string; icon: typeof Monitor }[] = [
     { value: "system", label: "Системная", icon: Monitor },
@@ -19,11 +12,15 @@ const THEMES: { value: ThemeChoice; label: string; icon: typeof Monitor }[] = [
 
 export default function SettingsPage() {
     const { theme, setTheme } = useTheme();
-
-    const [telephonyList, setTelephonyList] = useState<CompanyTelephonyItem[]>([]);
-    const [dictionary, setDictionary] = useState<TelephonyDictionaryItem[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const { 
+        data: telephonyList, 
+        dictionary, 
+        loading, 
+        error, 
+        refetch,
+        connect,
+        detach 
+    } = useTelephony();
 
     const [formTelephonyName, setFormTelephonyName] = useState("");
     const [formExternalId, setFormExternalId] = useState("");
@@ -32,59 +29,42 @@ export default function SettingsPage() {
 
     const [detachId, setDetachId] = useState<string | null>(null);
 
-    function loadData() {
-        setLoading(true);
-        setError(null);
-        Promise.all([getCompanyTelephony(), getTelephonyDictionary()])
-            .then(([list, dict]) => {
-                setTelephonyList(list);
-                setDictionary(dict);
-                if (dict.length > 0 && !formTelephonyName) setFormTelephonyName(dict[0].name ?? "");
-                setLoading(false);
-            })
-            .catch((e) => {
-                setError((e as Error).message || "Не удалось загрузить данные");
-                setLoading(false);
-            });
-    }
-
     useEffect(() => {
-        loadData();
-    }, []);
+        if (dictionary.length > 0 && !formTelephonyName) {
+            setFormTelephonyName(dictionary[0].name ?? "");
+        }
+    }, [dictionary, formTelephonyName]);
 
-    function handleConnect() {
+    async function handleConnect() {
         if (!formTelephonyName.trim() || !formExternalId.trim()) {
             setSubmitError("Укажите телефонию и идентификатор аккаунта");
             return;
         }
         setSubmitLoading(true);
         setSubmitError(null);
-        createCompanyTelephony({
+        
+        const result = await connect({
             telephony_name: formTelephonyName.trim(),
             external_account_id: formExternalId.trim(),
-        })
-            .then(() => {
-                setFormExternalId("");
-                loadData();
-                setSubmitLoading(false);
-            })
-            .catch((e) => {
-                setSubmitError((e as Error).message || "Не удалось подключить");
-                setSubmitLoading(false);
-            });
+        });
+
+        if (result.success) {
+            setFormExternalId("");
+        } else {
+            setSubmitError(result.error || "Не удалось подключить");
+        }
+        setSubmitLoading(false);
     }
 
-    function handleDetach(id: string) {
+    async function handleDetach(id: string) {
         if (!window.confirm("Отключить эту телефонию от компании?")) return;
         setDetachId(id);
-        deleteCompanyTelephony(id)
-            .then(() => {
-                loadData();
-                setDetachId(null);
-            })
-            .catch(() => {
-                setDetachId(null);
-            });
+        const result = await detach(id);
+        if (!result.success) {
+            // Error handling could be added here if needed, 
+            // but the original code didn't have specific error handling for detach failure.
+        }
+        setDetachId(null);
     }
 
     return (
@@ -135,13 +115,13 @@ export default function SettingsPage() {
                         <button
                             type="button"
                             className="ml-2 underline"
-                            onClick={loadData}
+                            onClick={() => refetch()}
                         >
                             Повторить
                         </button>
                     </p>
                 )}
-                {!loading && !error && (
+                {!loading && (
                     <>
                         <div className="rounded-xl border overflow-hidden mb-6" style={{ borderColor: "var(--theme-border)" }}>
                             <table className="min-w-full text-sm">
@@ -179,7 +159,7 @@ export default function SettingsPage() {
                                                     type="button"
                                                     disabled={detachId === item.id}
                                                     className="text-xs text-red-600 hover:underline disabled:opacity-50"
-                                                    onClick={() => handleDetach(item.id)}
+                                                    onClick={() => handleDetach(item.id as string)}
                                                 >
                                                     {detachId === item.id ? "…" : "Отключить"}
                                                 </button>

@@ -15,7 +15,7 @@ type AuthConfig struct {
 	AuthLinkTTLSec  int    `env:"AUTH_LINK_TTL_SEC" env-required:"true"`  // время жизни ссылки в Redis (сек)
 	JWTSecret       string `env:"AUTH_JWT_SECRET" env-required:"true"`    // секрет для подписи JWT
 
-	//OAuth OAuthConfig
+	OAuth OAuthConfig
 }
 
 // OAuthConfig — настройки OAuth (Google / Apple). Все поля из env.

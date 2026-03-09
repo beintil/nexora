@@ -10,6 +10,7 @@ import (
 	"telephony/internal/modules/call_events"
 	"telephony/internal/modules/company"
 	"telephony/internal/modules/countries"
+	"telephony/internal/modules/plan"
 	"telephony/internal/modules/telephony_ingestion_pipeline"
 	"telephony/internal/shared/database/postgres"
 	"telephony/pkg/client/country"
@@ -50,7 +51,7 @@ func newCallTreeNode(direction domain.CallDirection, events []*domain.CallEvent)
 }
 
 func TestService_CallWorkerBaseCreateSuccess(t *testing.T) {
-	telephonyTestID := "ACd8ea4eaff0d856f7b41936a4960e73a2"
+	telephonyTestID := "4591441d-c0a8-409f-9658-eab5459a0b81"
 
 	var tests = map[string]struct {
 		CallTree *domain.CallTree
@@ -229,13 +230,15 @@ func TestService_CallWorkerBaseCreateSuccess(t *testing.T) {
 	callEventsRepos := call_events.NewRepository()
 	callRepos := call2.NewRepository()
 	companyRepos := company.NewRepository()
+	planRepos := plan.NewRepository()
 
 	// Init Services
 	countriesService := countries.NewService(countryRepos, transaction, countriesClient)
 	callEventsService := call_events.NewService(callEventsRepos, transaction)
+	planService := plan.NewService(planRepos, transaction)
 	callService := call2.NewService(callEventsService, callRepos, transaction)
 	companyService := company.NewService(callService, companyRepos, transaction)
-	telephonyIngestionPipelineService := telephony_ingestion_pipeline.NewService(countriesService, callService, companyService, transaction)
+	telephonyIngestionPipelineService := telephony_ingestion_pipeline.NewService(countriesService, callService, companyService, planService, transaction)
 
 	for name, variableTest := range tests {
 		t.Logf("running test: %s", name)

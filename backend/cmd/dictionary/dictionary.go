@@ -144,4 +144,22 @@ var dictionaryValues = []*dictionary{
 		Value:       "call_direction_outbound_dial",
 		Description: "исходящий звонок, созданный внутри Twilio с помощью XML-тега <Dial> (например, когда вы внутри звонка перенаправляете на другой номер)",
 	},
+	{
+		MainType:    "PlanLimitType",
+		Name:        "PlanLimitTypeCall",
+		Value:       "plan_limit_type_call",
+		Description: "ключь для плана лимитов по количеству звонков",
+	},
+	{
+		MainType:    "PlanLimitType",
+		Name:        "PlanLimitTypeEmailMessages",
+		Value:       "plan_limit_type_email_messages",
+		Description: "ключь для плана лимитов по количеству сообщений на отправку на email",
+	},
+	{
+		MainType:    "PlanLimitType",
+		Name:        "PlanLimitTypeTelegramMessages",
+		Value:       "plan_limit_type_telegram_messages",
+		Description: "ключь для плана лимитов по количеству сообщений на отправку в телеграм",
+	},
 }

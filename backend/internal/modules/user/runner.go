@@ -60,4 +60,21 @@ func (r *runnerV1) Run(router *mux.Router, mid middleware.Middleware) {
 			mid.PermissionMiddleware(domain.RoleOwner)(http.HandlerFunc(r.handler.handleUploadAvatar)),
 		),
 	).Methods(http.MethodPost)
+
+	// Staff management
+	router.Handle("/users",
+		mid.WithAccess(http.HandlerFunc(r.handler.handleListUsers)),
+	).Methods(http.MethodGet)
+
+	router.Handle("/users",
+		mid.WithAccess(
+			mid.PermissionMiddleware(domain.RoleOwner)(http.HandlerFunc(r.handler.handleCreateStaff)),
+		),
+	).Methods(http.MethodPost)
+
+	router.Handle("/users/{id}",
+		mid.WithAccess(
+			mid.PermissionMiddleware(domain.RoleOwner)(http.HandlerFunc(r.handler.handleDeleteUser)),
+		),
+	).Methods(http.MethodDelete)
 }

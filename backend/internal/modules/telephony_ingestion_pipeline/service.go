@@ -6,6 +6,7 @@ import (
 	"telephony/internal/modules/call"
 	"telephony/internal/modules/company"
 	"telephony/internal/modules/countries"
+	"telephony/internal/modules/plan"
 	"telephony/internal/shared/database/postgres"
 	srverr "telephony/internal/shared/server_error"
 
@@ -17,6 +18,8 @@ type service struct {
 	callService    call.Service
 	companyService company.Service
 
+	planService plan.Service
+
 	pool postgres.Transaction
 }
 
@@ -25,12 +28,16 @@ func NewService(
 	callService call.Service,
 	companyService company.Service,
 
+	planService plan.Service,
+
 	pool postgres.Transaction,
 ) Service {
 	return &service{
 		countryService: countryService,
 		callService:    callService,
 		companyService: companyService,
+
+		planService: planService,
 
 		pool: pool,
 	}
@@ -75,6 +82,14 @@ func (s *service) CallWorker(ctx context.Context, call *domain.CallWorker, telep
 		return sErr
 	}
 	call.CompanyTelephonyID = companyTelephony.ID
+
+	//ok, sErr := s.planService.CheckLimit(ctx, companyTelephony.CompanyID, domain.PlanLimitCallsPerMonth, 0, 1)
+	//if sErr != nil {
+	//	return sErr
+	//}
+	//if !ok {
+	//	return srverr.NewServerError(plan.ServiceErrorLimitExceeded, "telephony_ingestion_pipeline_.CallWorker/plan_limit_exceeded")
+	//}
 
 	// Нормализуем страну
 	call.Details.FromCountry, sErr = s.normalizeCountryCodeOrDefaultTH(ctx, tx, call.Details.FromCountry)

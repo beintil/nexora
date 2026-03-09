@@ -1,20 +1,42 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { PhoneCall, Zap, ShieldCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useAuth } from "../context/AuthContext"
 import Login from "./Login"
 import Register from "./Register"
+import ForgotPassword from "./ForgotPassword"
 
 export default function TelephonyApp() {
     const location = useLocation();
-    const [page, setPage] = useState<"landing" | "login" | "register">("landing");
+    const navigate = useNavigate();
+    const { setAccessToken } = useAuth();
+    const [page, setPage] = useState<"landing" | "login" | "register" | "forgot">("landing");
     const authOpen = page !== "landing";
 
     useEffect(() => {
+        // Handle OAuth success redirect with tokens in fragment
+        if (location.hash) {
+            const params = new URLSearchParams(location.hash.substring(1));
+            const accessToken = params.get("access_token");
+            const refreshToken = params.get("refresh_token");
+
+            if (accessToken) {
+                setAccessToken(accessToken);
+                if (refreshToken) {
+                    sessionStorage.setItem("refresh_token", refreshToken);
+                }
+                // Clear fragment and go to dashboard
+                window.history.replaceState(null, "", window.location.pathname);
+                navigate("/dashboard", { replace: true });
+                return;
+            }
+        }
+
         const state = location.state as { openAuth?: "login" | "register" } | null;
         if (state?.openAuth === "login") setPage("login");
         if (state?.openAuth === "register") setPage("register");
-    }, [location.state]);
+    }, [location.state, location.hash, setAccessToken, navigate]);
 
     return (
         <div className="relative overflow-hidden">
@@ -47,11 +69,16 @@ export default function TelephonyApp() {
                                 <Login
                                     onBack={() => setPage("landing")}
                                     onSwitch={() => setPage("register")}
+                                    onForgot={() => setPage("forgot")}
                                 />
-                            ) : (
+                            ) : page === "register" ? (
                                 <Register
                                     onBack={() => setPage("landing")}
                                     onSwitch={() => setPage("login")}
+                                />
+                            ) : (
+                                <ForgotPassword
+                                    onBack={() => setPage("login")}
                                 />
                             )}
                         </motion.div>

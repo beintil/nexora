@@ -18,30 +18,7 @@ const defaultFetchOptions: RequestInit = {
     credentials: "include",
 };
 
-async function postJson<TPayload, TResponse>(
-    path: string,
-    payload: TPayload,
-    options: RequestInit = {}
-): Promise<TResponse> {
-    const response = await fetch(`${BACKEND_URL}${path}`, {
-        method: "POST",
-        ...defaultFetchOptions,
-        headers: {
-            "Content-Type": "application/json",
-            ...options.headers,
-        },
-        body: JSON.stringify(payload),
-        ...options,
-    });
-
-    if (response.ok) {
-        const contentType = response.headers.get("content-type") ?? "";
-        if (response.status === 204 || !contentType.includes("application/json")) {
-            return {} as TResponse;
-        }
-        return (await response.json()) as TResponse;
-    }
-
+async function handleResponseError(response: Response): Promise<never> {
     const statusCode = response.status;
     let transportError: ApiErrorPayload | null = null;
     try {
@@ -66,6 +43,33 @@ async function postJson<TPayload, TResponse>(
     throw error;
 }
 
+async function postJson<TPayload, TResponse>(
+    path: string,
+    payload: TPayload,
+    options: RequestInit = {}
+): Promise<TResponse> {
+    const response = await fetch(`${BACKEND_URL}${path}`, {
+        method: "POST",
+        ...defaultFetchOptions,
+        headers: {
+            "Content-Type": "application/json",
+            ...options.headers,
+        },
+        body: JSON.stringify(payload),
+        ...options,
+    });
+
+    if (response.ok) {
+        const contentType = response.headers.get("content-type") ?? "";
+        if (response.status === 204 || !contentType.includes("application/json")) {
+            return {} as TResponse;
+        }
+        return (await response.json()) as TResponse;
+    }
+
+    return handleResponseError(response);
+}
+
 export function loginRequest(payload: LoginPayload): Promise<LoginResponse> {
     return postJson<LoginPayload, LoginResponse>("/v1/auth/login", payload);
 }
@@ -87,22 +91,7 @@ async function getNoContent(path: string): Promise<void> {
     if (response.ok || response.status === 204) {
         return;
     }
-    const statusCode = response.status;
-    let transportError: ApiErrorPayload | null = null;
-    try {
-        transportError = (await response.json()) as ApiErrorPayload;
-    } catch {
-        // ignore
-    }
-    const backendCode = transportError?.code ?? statusCode;
-    const rid = transportError?.transaction_id;
-    const message =
-        (transportError?.message && String(transportError.message)) ||
-        `Unknown error. ${backendCode}`;
-    const error: ApiError = new Error(message);
-    error.code = backendCode;
-    if (rid) error.rid = rid;
-    throw error;
+    return handleResponseError(response);
 }
 
 /** POST send-code: переотправка ссылки верификации на email. Успех — 204. */
@@ -122,4 +111,21 @@ export function logoutRequest(refreshToken?: string): Promise<void> {
         "/v1/auth/logout",
         { refreshToken: refreshToken ?? "" }
     );
+}
+
+/** POST forgot-password: запрос ссылки на восстановление пароля. Успех — 202 (Accepted). */
+export function forgotPasswordRequest(payload: { email: string }): Promise<void> {
+    return postJson<{ email: string }, void>("/v1/auth/forgot-password", payload);
+}
+
+/** POST reset-password: сброс пароля по токену из письма. Успех — 204. */
+export function resetPasswordConfirmRequest(payload: { token: string; new_password: string }): Promise<void> {
+    return postJson<{ token: string; new_password: string }, void>("/v1/auth/reset-password", payload);
+}
+
+/** PATCH change-password: смена пароля авторизованным пользователем. Успех — 204. */
+export function changePasswordRequest(payload: { old_password: string; new_password: string }): Promise<void> {
+    return postJson<{ old_password: string; new_password: string }, void>("/v1/auth/change-password", payload, {
+        method: "PATCH",
+    });
 }

@@ -7,6 +7,7 @@ import (
 	transperr "telephony/internal/shared/transport_error"
 	"telephony/pkg/logger"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/gorilla/mux"
 )
 
@@ -23,11 +24,12 @@ func NewRunnerHandlerV1(
 	converter transperr.ErrorConverter,
 	cfg config.Config,
 	log logger.Logger,
+	redisClient *redis.Client,
 ) runner.Handler {
 	return &handlerV1{
 		router: router.PathPrefix("/v1").Subrouter(),
 
-		Handler: NewHandler(service, httpResp, converter, cfg, log),
+		Handler: NewHandler(service, httpResp, converter, cfg, log, redisClient),
 	}
 }
 

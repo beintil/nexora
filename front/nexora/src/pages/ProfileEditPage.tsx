@@ -6,7 +6,8 @@ import "react-easy-crop/react-easy-crop.css"
 import { useProfileContext } from "../context/ProfileContext"
 import { updateProfile, uploadAvatar } from "../api/profile"
 import { getCroppedImg } from "../utils/cropImage"
-import { ArrowLeft, Loader2, User, Camera, CheckCircle2, AlertCircle } from "lucide-react"
+import { ArrowLeft, Loader2, User, Camera, CheckCircle2, AlertCircle, KeyRound, Eye, EyeOff } from "lucide-react"
+import { changePasswordRequest } from "../api/auth"
 
 const ALLOWED_AVATAR_TYPES = ["image/jpeg", "image/png", "image/webp"]
 
@@ -29,6 +30,14 @@ export default function ProfileEditPage() {
     const [rotation, setRotation] = useState(0)
     const [lastCroppedAreaPixels, setLastCroppedAreaPixels] = useState<Area | null>(null)
     const [cropApplying, setCropApplying] = useState(false)
+
+    const [oldPassword, setOldPassword] = useState("")
+    const [newPassword, setNewPassword] = useState("")
+    const [confirmNewPassword, setConfirmNewPassword] = useState("")
+    const [changingPassword, setChangingPassword] = useState(false)
+    const [passwordSuccess, setPasswordSuccess] = useState(false)
+    const [passwordError, setPasswordError] = useState("")
+    const [showPasswords, setShowPasswords] = useState(false)
 
     useEffect(() => {
         setAvatarPreviewError(false)
@@ -103,6 +112,47 @@ export default function ProfileEditPage() {
             setCropApplying(false)
         }
     }, [cropImageUrl, cropOriginalFile, lastCroppedAreaPixels, rotation, closeCropModal])
+
+    const handlePasswordChange = async (e: FormEvent) => {
+        e.preventDefault()
+        setPasswordError("")
+        setPasswordSuccess(false)
+
+        if (!oldPassword || !newPassword || !confirmNewPassword) {
+            setPasswordError("Заполните все поля.")
+            return
+        }
+
+        if (newPassword !== confirmNewPassword) {
+            setPasswordError("Пароли не совпадают.")
+            return
+        }
+
+        if (newPassword.length < 8) {
+            setPasswordError("Пароль должен быть не менее 8 символов.")
+            return
+        }
+
+        setChangingPassword(true)
+        try {
+            await changePasswordRequest({
+                old_password: oldPassword,
+                new_password: newPassword,
+            })
+            setPasswordSuccess(true)
+            setOldPassword("")
+            setNewPassword("")
+            setConfirmNewPassword("")
+        } catch (err) {
+            if (err instanceof Error) {
+                setPasswordError(err.message || "Не удалось изменить пароль.")
+            } else {
+                setPasswordError("Не удалось изменить пароль.")
+            }
+        } finally {
+            setChangingPassword(false)
+        }
+    }
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault()
@@ -246,6 +296,94 @@ export default function ProfileEditPage() {
                                 "Сохранить"
                             )}
                         </button>
+                    </div>
+                </form>
+
+                <div className="mt-16 mb-8 flex items-center gap-3 text-slate-400">
+                    <div className="h-px flex-1 bg-slate-200"></div>
+                    <KeyRound className="h-4 w-4" />
+                    <span className="text-xs font-semibold uppercase tracking-wider">Безопасность</span>
+                    <div className="h-px flex-1 bg-slate-200"></div>
+                </div>
+
+                <form onSubmit={handlePasswordChange} className="mt-6">
+                    <div className="rounded-2xl bg-white/90 p-8 shadow-[0_2px_20px_rgba(0,0,0,0.06)] backdrop-blur-sm">
+                        <h3 className="mb-6 text-lg font-semibold text-slate-900">Изменить пароль</h3>
+                        
+                        <div className="space-y-5">
+                            <div className="relative">
+                                <label className="mb-1.5 block text-xs font-medium text-slate-500">Текущий пароль</label>
+                                <input
+                                    type={showPasswords ? "text" : "password"}
+                                    value={oldPassword}
+                                    onChange={(e) => setOldPassword(e.target.value)}
+                                    className="w-full rounded-xl border-2 border-slate-100 bg-white px-4 py-2.5 text-slate-900 transition focus:border-slate-300 focus:outline-none"
+                                />
+                            </div>
+                            
+                            <div className="grid gap-5 sm:grid-cols-2">
+                                <div>
+                                    <label className="mb-1.5 block text-xs font-medium text-slate-500">Новый пароль</label>
+                                    <input
+                                        type={showPasswords ? "text" : "password"}
+                                        value={newPassword}
+                                        onChange={(e) => setNewPassword(e.target.value)}
+                                        className="w-full rounded-xl border-2 border-slate-100 bg-white px-4 py-2.5 text-slate-900 transition focus:border-slate-300 focus:outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="mb-1.5 block text-xs font-medium text-slate-500">Подтвердите пароль</label>
+                                    <input
+                                        type={showPasswords ? "text" : "password"}
+                                        value={confirmNewPassword}
+                                        onChange={(e) => setConfirmNewPassword(e.target.value)}
+                                        className="w-full rounded-xl border-2 border-slate-100 bg-white px-4 py-2.5 text-slate-900 transition focus:border-slate-300 focus:outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={() => setShowPasswords(!showPasswords)}
+                                className="flex items-center gap-2 text-xs font-medium text-slate-400 transition hover:text-slate-600"
+                            >
+                                {showPasswords ? (
+                                    <><EyeOff className="h-3.5 w-3.5" /> Скрыть пароли</>
+                                ) : (
+                                    <><Eye className="h-3.5 w-3.5" /> Показать пароли</>
+                                )}
+                            </button>
+                        </div>
+
+                        {passwordError && (
+                            <div className="mt-6 flex items-center gap-3 rounded-xl bg-red-50/90 px-4 py-3 text-sm text-red-800">
+                                <AlertCircle className="h-4 w-4 shrink-0" />
+                                {passwordError}
+                            </div>
+                        )}
+                        {passwordSuccess && (
+                            <div className="mt-6 flex items-center gap-3 rounded-xl bg-emerald-50/90 px-4 py-3 text-sm text-emerald-800">
+                                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                                Пароль успешно изменён.
+                            </div>
+                        )}
+
+                        <div className="mt-8 flex justify-end">
+                            <button
+                                type="submit"
+                                disabled={changingPassword}
+                                className="rounded-full border-2 border-slate-900 bg-transparent px-8 py-2 text-sm font-medium text-slate-900 transition hover:bg-slate-900 hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 disabled:opacity-60"
+                            >
+                                {changingPassword ? (
+                                    <>
+                                        <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+                                        Изменение...
+                                    </>
+                                ) : (
+                                    "Изменить пароль"
+                                )}
+                            </button>
+                        </div>
                     </div>
                 </form>
             </div>

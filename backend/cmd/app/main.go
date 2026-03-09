@@ -15,6 +15,8 @@ import (
 	"telephony/internal/modules/call_events"
 	"telephony/internal/modules/company"
 	"telephony/internal/modules/countries"
+	"telephony/internal/modules/notification"
+	"telephony/internal/modules/plan"
 	telephonywebhook "telephony/internal/modules/telephony/webhook"
 	mango2 "telephony/internal/modules/telephony/webhook/mango"
 	mts2 "telephony/internal/modules/telephony/webhook/mts"
@@ -32,8 +34,11 @@ import (
 	transperr "telephony/internal/shared/transport_error"
 	"telephony/pkg/client/country"
 	email_stmp "telephony/pkg/client/email_sender/stmp"
+	"telephony/pkg/client/oauth/appleoauth"
+	"telephony/pkg/client/oauth/googleoauth"
 	"telephony/pkg/client/yandexstorage"
 	"telephony/pkg/logger"
+	"time"
 
 	"github.com/go-openapi/strfmt"
 	"github.com/go-redis/redis/v8"
@@ -80,6 +85,9 @@ func main() {
 	)
 
 	middleware.SetupCORS(router, cfg.Handler.AllowedCORSOrigins, mid)
+	router.Use(middleware.AccessLog(log))
+
+	setupBaseRoutes(router)
 
 	initBusinessLogic(
 		router,
@@ -111,8 +119,11 @@ func main() {
 
 	<-quit
 
-	err = httpServer.Shutdown(ctx)
-	if err != nil {
+	log.Info("shutting down server...")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		log.Errorf("error shutdown: %s", err)
 	}
 
@@ -142,7 +153,9 @@ func initBusinessLogic(
 	callEventsRepos := call_events.NewRepository()
 	callRepos := call.NewRepository()
 	companyRepos := company.NewRepository()
+	planRepos := plan.NewRepository()
 	userRepos := user.NewRepository()
+	notificationRepos := notification.NewRepository()
 
 	//phoneSender := newPhoneSender(cfg)
 	emailSender := email_stmp.NewSMTPSender(
@@ -156,10 +169,12 @@ func initBusinessLogic(
 	// Init Services
 	countriesService := countries.NewService(countryRepos, transaction, countriesClient)
 	callEventsService := call_events.NewService(callEventsRepos, transaction)
+	planService := plan.NewService(planRepos, transaction)
 	callService := call.NewService(callEventsService, callRepos, transaction)
 	companyService := company.NewService(callService, companyRepos, transaction)
-	telephonyIngestionPipelineService := telephony_ingestion_pipeline.NewService(countriesService, callService, companyService, transaction)
+	telephonyIngestionPipelineService := telephony_ingestion_pipeline.NewService(countriesService, callService, companyService, planService, transaction)
 	telephonyCallService := telephonywebhook.NewTelephonyCall(telephonyIngestionPipelineService)
+	notificationService := notification.NewService(notificationRepos, transaction)
 
 	s3Storage, err := yandexstorage.NewClient(
 		cfg.S3.AccessKeyID,
@@ -178,10 +193,32 @@ func initBusinessLogic(
 	}
 
 	userService := user.NewService(userRepos, companyService, transaction, s3Storage, cfg.Storage.AvatarPrefix)
-	authService := auth.NewService(userService, companyService, transaction, redisCache, cfg, emailSender)
+
+	// OAuth Clients
+	googleOAuthClient, err := googleoauth.NewClient(
+		cfg.Auth.OAuth.OAuthGoogle.ClientID,
+		cfg.Auth.OAuth.OAuthGoogle.ClientSecret,
+		cfg.Auth.OAuth.OAuthBackendBaseURL+cfg.Auth.OAuth.OAuthGoogle.RedirectPath,
+		cfg.Auth.OAuth.OAuthGoogle.UserinfoURL,
+	)
+	if err != nil {
+		log.Errorf("google oauth init: %v", err)
+	}
+
+	appleOAuthClient, err := appleoauth.NewClient(
+		cfg.Auth.OAuth.OAuthApple.ClientID,
+		cfg.Auth.OAuth.OAuthApple.AuthURL,
+		cfg.Auth.OAuth.OAuthApple.JWKSURL,
+		cfg.Auth.OAuth.OAuthApple.Issuer,
+	)
+	if err != nil {
+		log.Errorf("apple oauth init: %v", err)
+	}
+
+	authService := auth.NewService(userService, companyService, transaction, redisCache, cfg, emailSender, googleOAuthClient, appleOAuthClient)
 
 	runner.InitHandlers(router, mid,
-		auth.NewRunnerHandlerV1(router, authService, httpResp, convert, cfg, log),
+		auth.NewRunnerHandlerV1(router, authService, httpResp, convert, cfg, log, redisClient),
 		user.NewRunnerHandlerV1(router, userService, httpResp, convert, cfg.Auth.JWTSecret),
 		call.NewRunnerHandlerV1(router, callService, httpResp, convert),
 		company.NewRunnerHandlerV1(router, companyService, httpResp, convert),
@@ -189,11 +226,18 @@ func initBusinessLogic(
 		mango2.NewRunnerHandlerV1(router, telephonyCallService, httpResp, convert, validationFormat),
 		zadarma2.NewRunnerHandlerV1(router, telephonyCallService, httpResp, convert, validationFormat),
 		mts2.NewRunnerHandlerV1(router, telephonyCallService, httpResp, convert, validationFormat),
+		notification.NewRunnerHandlerV1(router, notificationService, httpResp, convert),
 	)
 
 	runner.InitCronTasks(log,
 		cron.NewUpdateCountriesCron(countriesService, log),
 	)
+}
+
+func setupBaseRoutes(router *mux.Router) {
+	router.HandleFunc("/health", http2.HealthHandler).Methods(http.MethodGet)
+	router.HandleFunc("/swagger", http2.SwaggerUIHandler).Methods(http.MethodGet)
+	router.HandleFunc("/swagger.yaml", http2.SwaggerYamlHandler).Methods(http.MethodGet)
 }
 
 func logRegisteredEndpoints(log logger.Logger, port int, router *mux.Router) {

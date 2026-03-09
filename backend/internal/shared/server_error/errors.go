@@ -16,6 +16,10 @@ func (err ErrorTypeBadRequest) String() string {
 	return string(err)
 }
 
+const (
+	ErrBadRequest ErrorTypeBadRequest = "bad request"
+)
+
 type ErrorTypeNotFound string
 
 func (err ErrorTypeNotFound) String() string {

@@ -15,7 +15,7 @@ export function useProfile(accessToken: string | null) {
         }
         setLoading(true);
         setError(false);
-        getProfile(accessToken)
+        getProfile()
             .then(setProfile)
             .catch(() => setError(true))
             .finally(() => setLoading(false));
@@ -24,7 +24,7 @@ export function useProfile(accessToken: string | null) {
     const refetch = () => {
         if (!accessToken) return;
         setLoading(true);
-        getProfile(accessToken)
+        getProfile()
             .then(setProfile)
             .catch(() => setError(true))
             .finally(() => setLoading(false));

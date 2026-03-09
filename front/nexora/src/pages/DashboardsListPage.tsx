@@ -1,11 +1,6 @@
 import { Link } from "react-router-dom"
 import {
-    LayoutDashboard,
     Phone,
-    PhoneMissed,
-    BarChart3,
-    Users,
-    Settings,
     type LucideIcon,
 } from "lucide-react"
 

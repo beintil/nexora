@@ -23,6 +23,7 @@ type User struct {
 	AvatarURL            *string
 	AvatarID             *string // идентификатор файла аватара в хранилище (UUID)
 	VerifiedRegistration bool
+	IsDelete             bool
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 }

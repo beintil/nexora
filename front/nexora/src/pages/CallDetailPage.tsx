@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Phone, Clock, MapPin, Music, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
-import { getCallById } from "../api/calls";
+import { useCallDetail } from "../hooks/useCallDetail";
 import type { CallTreeResponse } from "../api/calls";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -32,19 +32,7 @@ const DIRECTION_COLORS: Record<string, string> = {
 
 export default function CallDetailPage() {
     const { id } = useParams<{ id: string }>();
-    const [tree, setTree] = useState<CallTreeResponse | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-
-    useEffect(() => {
-        if (!id) return;
-        setLoading(true);
-        setError(null);
-        getCallById(id)
-            .then(setTree)
-            .catch(() => setError("Не удалось загрузить звонок"))
-            .finally(() => setLoading(false));
-    }, [id]);
+    const { data: tree, loading, error } = useCallDetail(id);
 
     if (loading) {
         return (
@@ -248,7 +236,7 @@ function CallTreeBlock({ node, depth }: { node: CallTreeResponse; depth: number 
                             className="p-1 rounded-lg hover:bg-slate-200 text-slate-500"
                             onClick={(e) => {
                                 e.stopPropagation();
-                                setOpen((o) => !o);
+                                setOpen((o: boolean) => !o);
                             }}
                             aria-label={open ? "Свернуть" : "Развернуть"}
                         >
@@ -281,7 +269,7 @@ function CallTreeBlock({ node, depth }: { node: CallTreeResponse; depth: number 
             </div>
             {hasChildren && open && (
                 <div className="mt-2 space-y-2">
-                    {node.children!.map((ch, idx) => (
+                    {node.children!.map((ch: CallTreeResponse, idx: number) => (
                         <CallTreeBlock key={ch.call?.id ?? idx} node={ch} depth={depth + 1} />
                     ))}
                 </div>

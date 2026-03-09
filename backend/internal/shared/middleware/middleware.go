@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"telephony/internal/config"
 	"telephony/internal/domain"
@@ -19,7 +20,7 @@ import (
 // AllowedCORSOrigins is a comma-separated list of origins for CORS, or "*" for any.
 // Empty means no CORS (browser same-origin only).
 // For credentials (cookies) to work, use a specific origin (e.g. "http://localhost:5173"), not "*".
-var AllowedCORSOrigins = ""
+// var AllowedCORSOrigins = "" // No longer used: Moved to middleware struct for thread safety and isolation.
 
 type Middleware interface {
 	PermissionMiddleware(roles ...domain.Role) func(http.Handler) http.Handler
@@ -29,25 +30,25 @@ type Middleware interface {
 }
 
 type middleware struct {
-	log logger.Logger
-
-	cfg *config.Config
-
-	httpResp  response.HttpResponse
-	converter transperr.ErrorConverter
+	log                logger.Logger
+	cfg                *config.Config
+	httpResponse       response.HttpResponse
+	converter          transperr.ErrorConverter
+	allowedCORSOrigins string
 }
 
 func NewMiddleware(
 	log logger.Logger,
 	cfg *config.Config,
-	httpResp response.HttpResponse,
+	httpResponse response.HttpResponse,
 	converter transperr.ErrorConverter,
 ) Middleware {
 	return &middleware{
-		log:       log,
-		cfg:       cfg,
-		httpResp:  httpResp,
-		converter: converter,
+		log:                log,
+		cfg:                cfg,
+		httpResponse:       httpResponse,
+		converter:          converter,
+		allowedCORSOrigins: cfg.Handler.AllowedCORSOrigins,
 	}
 }
 
@@ -86,7 +87,7 @@ func (h *middleware) PermissionMiddleware(roles ...domain.Role) func(http.Handle
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			acc, ok := r.Context().Value(contextKeyAuth).(*domain.UserFromAccess)
 			if !ok {
-				h.httpResp.ErrorResponse(w, r,
+				h.httpResponse.ErrorResponse(w, r,
 					dto.TransportErrorToModel(
 						h.converter.ToHTTP(srverr.NewServerError(srverr.ErrUnauthorized, "middleware.permissionMiddleware/acc")),
 					),
@@ -99,7 +100,7 @@ func (h *middleware) PermissionMiddleware(roles ...domain.Role) func(http.Handle
 					return
 				}
 			}
-			h.httpResp.ErrorResponse(w, r,
+			h.httpResponse.ErrorResponse(w, r,
 				dto.TransportErrorToModel(
 					h.converter.ToHTTP(srverr.NewServerError(srverr.ErrForbidden, "middleware.permissionMiddleware/role")),
 				),
@@ -117,8 +118,8 @@ func (m *middleware) PanicRecovery(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if rec := recover(); rec != nil {
-				m.log.Errorf("[%s] Panic recovered: %v", r.URL.String(), rec)
-				w.WriteHeader(500)
+				m.log.Errorf("panic recovered: %v\nstack trace:\n%s", rec, debug.Stack())
+				m.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(m.converter.ToHTTP(srverr.NewServerError(srverr.ErrInternalServerError, "middleware.PanicRecovery"))))
 			}
 		}()
 
@@ -129,8 +130,8 @@ func (m *middleware) PanicRecovery(next http.Handler) http.Handler {
 func (m *middleware) CORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		if AllowedCORSOrigins != "" && (AllowedCORSOrigins == "*" || originAllowed(AllowedCORSOrigins, origin)) {
-			allowOrigin := AllowedCORSOrigins
+		if m.allowedCORSOrigins != "" && (m.allowedCORSOrigins == "*" || originAllowed(m.allowedCORSOrigins, origin)) {
+			allowOrigin := m.allowedCORSOrigins
 			if allowOrigin != "*" {
 				allowOrigin = origin
 			}
@@ -165,19 +166,30 @@ func originAllowed(allowed, origin string) bool {
 // SetupCORS sets AllowedCORSOrigins, applies CORS middleware and registers OPTIONS preflight handler.
 // allowedOrigins is from config (e.g. "*" or "http://localhost:5173,https://app.example.com").
 // Must be called before registering routes.
-func SetupCORS(router *mux.Router, allowedOrigins string, mid Middleware) {
-	AllowedCORSOrigins = allowedOrigins
+func SetupCORS(router *mux.Router, allowedCORSOrigins string, mid Middleware) {
+	m, ok := mid.(*middleware)
+	if ok {
+		m.allowedCORSOrigins = allowedCORSOrigins
+	}
+
 	router.Use(mid.CORS)
-	router.Methods(http.MethodOptions).PathPrefix("/").HandlerFunc(corsPreflight)
+	router.Methods(http.MethodOptions).PathPrefix("/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		corsPreflight(w, r, m.allowedCORSOrigins)
+	})
 }
 
-func corsPreflight(w http.ResponseWriter, r *http.Request) {
-	if AllowedCORSOrigins == "" {
+func corsPreflight(w http.ResponseWriter, r *http.Request, allowedCORSOrigins string) {
+	if allowedCORSOrigins == "" {
 		return
 	}
-	allowOrigin := AllowedCORSOrigins
-	if o := r.Header.Get("Origin"); o != "" && AllowedCORSOrigins != "*" && originAllowed(AllowedCORSOrigins, o) {
-		allowOrigin = o
+	allowOrigin := allowedCORSOrigins
+	if allowOrigin != "*" {
+		origin := r.Header.Get("Origin")
+		if originAllowed(allowedCORSOrigins, origin) {
+			allowOrigin = origin
+		} else {
+			return
+		}
 	}
 	w.Header().Set("Access-Control-Allow-Origin", allowOrigin)
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")

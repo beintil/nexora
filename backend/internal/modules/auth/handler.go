@@ -9,12 +9,14 @@ import (
 	"telephony/internal/shared/dto"
 	"telephony/internal/shared/middleware"
 	"telephony/internal/shared/response"
-	srverr "telephony/internal/shared/server_error"
+	"telephony/internal/shared/server_error"
 	transperr "telephony/internal/shared/transport_error"
 	"telephony/models"
 	"telephony/pkg/logger"
+	"time"
 
 	"github.com/go-openapi/strfmt"
+	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
@@ -27,6 +29,8 @@ type handler struct {
 	cfg          config.Config
 
 	log logger.Logger
+
+	redisClient *redis.Client
 }
 
 func NewHandler(
@@ -35,6 +39,7 @@ func NewHandler(
 	converter transperr.ErrorConverter,
 	cfg config.Config,
 	log logger.Logger,
+	redisClient *redis.Client,
 ) Handler {
 	return &handler{
 		service:      service,
@@ -42,17 +47,32 @@ func NewHandler(
 		converter:    converter,
 		cfg:          cfg,
 		log:          log,
+		redisClient:  redisClient,
 	}
 }
 
-func (m *handler) Run(router *mux.Router, _ middleware.Middleware) {
+func (m *handler) Run(router *mux.Router, mid middleware.Middleware) {
 	authRouter := router.PathPrefix("/auth").Subrouter()
-	authRouter.HandleFunc("/register", m.handleRegister).Methods(http.MethodPost)
-	authRouter.HandleFunc("/login", m.handleLogin).Methods(http.MethodPost)
+
+	rateLimitRegister := middleware.RateLimitHandler(m.redisClient, 5, time.Minute)
+	rateLimitLogin := middleware.RateLimitHandler(m.redisClient, 10, time.Minute)
+	rateLimitSendCode := middleware.RateLimitHandler(m.redisClient, 3, time.Minute)
+
+	authRouter.Handle("/register", rateLimitRegister(http.HandlerFunc(m.handleRegister))).Methods(http.MethodPost)
+	authRouter.Handle("/login", rateLimitLogin(http.HandlerFunc(m.handleLogin))).Methods(http.MethodPost)
 	authRouter.HandleFunc("/refresh", m.handleRefresh).Methods(http.MethodPost)
 	authRouter.HandleFunc("/logout", m.handleLogout).Methods(http.MethodPost)
-	authRouter.HandleFunc("/verify-link", m.handleVerifyLink).Methods(http.MethodGet)
-	authRouter.HandleFunc("/send-code", m.handleSendCode).Methods(http.MethodPost)
+	authRouter.HandleFunc("/verify-link", m.handleVerifyLink).Methods(http.MethodGet, http.MethodPost)
+	authRouter.Handle("/send-code", rateLimitSendCode(http.HandlerFunc(m.handleSendCode))).Methods(http.MethodPost)
+
+	authRouter.HandleFunc("/google/start", m.handleGoogleStart).Methods(http.MethodGet)
+	authRouter.HandleFunc("/google/callback", m.handleGoogleCallback).Methods(http.MethodGet)
+	authRouter.HandleFunc("/apple/start", m.handleAppleStart).Methods(http.MethodGet)
+	authRouter.HandleFunc("/apple/callback", m.handleAppleCallback).Methods(http.MethodPost)
+
+	authRouter.HandleFunc("/forgot-password", m.handleForgotPassword).Methods(http.MethodPost)
+	authRouter.HandleFunc("/reset-password", m.handleResetPassword).Methods(http.MethodPost)
+	authRouter.Handle("/change-password", mid.WithAccess(http.HandlerFunc(m.handleChangePassword))).Methods(http.MethodPatch)
 }
 
 func (m *handler) handleRegister(w http.ResponseWriter, r *http.Request) {
@@ -70,13 +90,17 @@ func (m *handler) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, sErr := m.service.Register(r.Context(), dto.RegisterRequestToDomain(&req))
+	res, sErr := m.service.Register(r.Context(), dto.RegisterRequestToDomain(&req))
 	if sErr != nil {
 		m.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(m.converter.ToHTTP(sErr)))
 		return
 	}
 
-	m.httpResponse.WriteResponse(w, r, http.StatusCreated, &models.RegisterResponse{})
+	m.setRefreshTokenCookie(w, res.RefreshToken)
+	m.httpResponse.WriteResponse(w, r, http.StatusCreated, &models.RegisterResponse{
+		AccessToken:  &res.AccessToken,
+		RefreshToken: &res.RefreshToken,
+	})
 }
 
 func (m *handler) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -209,12 +233,10 @@ func (m *handler) handleSendCode(w http.ResponseWriter, r *http.Request) {
 	m.httpResponse.WriteResponse(w, r, http.StatusNoContent, nil)
 }
 
-/* OAuth HTTP handlers are temporarily disabled.
-
 func (m *handler) handleGoogleStart(w http.ResponseWriter, r *http.Request) {
 	redirectURL, sErr := m.service.StartGoogleOAuth(r.Context())
 	if sErr != nil {
-		m.redirectOAuthError(w, r, sErr)
+		m.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(m.converter.ToHTTP(sErr)))
 		return
 	}
 	http.Redirect(w, r, redirectURL, http.StatusFound)
@@ -223,11 +245,13 @@ func (m *handler) handleGoogleStart(w http.ResponseWriter, r *http.Request) {
 func (m *handler) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	state := r.URL.Query().Get("state")
+
 	res, sErr := m.service.LoginOrRegisterWithGoogle(r.Context(), code, state)
 	if sErr != nil {
 		m.redirectOAuthError(w, r, sErr)
 		return
 	}
+
 	m.setRefreshTokenCookieOAuthCallback(w, res.RefreshToken)
 	m.redirectOAuthSuccess(w, r, res.AccessToken, res.RefreshToken)
 }
@@ -235,7 +259,7 @@ func (m *handler) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 func (m *handler) handleAppleStart(w http.ResponseWriter, r *http.Request) {
 	redirectURL, sErr := m.service.StartAppleOAuth(r.Context())
 	if sErr != nil {
-		m.redirectOAuthError(w, r, sErr)
+		m.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(m.converter.ToHTTP(sErr)))
 		return
 	}
 	http.Redirect(w, r, redirectURL, http.StatusFound)
@@ -243,77 +267,70 @@ func (m *handler) handleAppleStart(w http.ResponseWriter, r *http.Request) {
 
 func (m *handler) handleAppleCallback(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		m.redirectOAuthError(w, r, srverr.NewServerError(ServiceErrorAuthRequestIsNotValid, "auth.handleAppleCallback/parse").SetError(err.Error()))
+		m.redirectOAuthError(w, r, srverr.NewServerError(srverr.ErrBadRequest, "auth.handleAppleCallback/parse").SetError(err.Error()))
 		return
 	}
 	idToken := r.FormValue("id_token")
 	state := r.FormValue("state")
-	if idToken == "" {
-		m.redirectOAuthError(w, r, srverr.NewServerError(ServiceErrorAuthRequestIsNotValid, "auth.handleAppleCallback/no_id_token"))
-		return
-	}
+
 	res, sErr := m.service.LoginOrRegisterWithApple(r.Context(), idToken, state)
 	if sErr != nil {
 		m.redirectOAuthError(w, r, sErr)
 		return
 	}
+
 	m.setRefreshTokenCookieOAuthCallback(w, res.RefreshToken)
 	m.redirectOAuthSuccess(w, r, res.AccessToken, res.RefreshToken)
 }
 
 func (m *handler) redirectOAuthSuccess(w http.ResponseWriter, r *http.Request, accessToken, refreshToken string) {
-	redirectURL := m.cfg.Auth.OAuthFrontendSuccessURL
+	redirectURL := m.cfg.Auth.OAuth.OAuthFrontendSuccessURL
 	if redirectURL == "" {
 		redirectURL = "/"
 	}
-	// Токены в fragment — фронт может прочитать после редиректа (cross-origin). Fragment не уходит на сервер.
 	if accessToken != "" && refreshToken != "" {
-		redirectURL += "#access_token=" + url.QueryEscape(accessToken) + "&refresh_token=" + url.QueryEscape(refreshToken)
+		// Use fragment for tokens so they aren't sent to server on redirect
+		redirectURL += "#access_token=" + accessToken + "&refresh_token=" + refreshToken
 	}
 	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
 
 func (m *handler) redirectOAuthError(w http.ResponseWriter, r *http.Request, sErr srverr.ServerError) {
-	url := m.cfg.Auth.OAuthFrontendErrorURL
-	if url == "" {
-		url = m.cfg.Auth.OAuthFrontendSuccessURL
-	}
+	url := m.cfg.Auth.OAuth.OAuthFrontendErrorURL
 	if url == "" {
 		url = "/"
 	}
-	// Не передаём детали ошибки в URL из соображений безопасности; фронт может показать общее сообщение.
 	http.Redirect(w, r, url, http.StatusFound)
 }
 
-// setRefreshTokenCookieOAuthCallback — как setRefreshTokenCookie, но SameSite=Lax для приёма редиректа с Google/Apple.
-func (m *handler) setRefreshTokenCookieOAuthCallback(w http.ResponseWriter, value string) {
-	http.SetCookie(w, &http.Cookie{
+func (m *handler) setRefreshTokenCookie(w http.ResponseWriter, token string) {
+	cookie := http.Cookie{
 		Name:     m.cfg.Auth.RefreshTokenCookieName,
-		Value:    value,
+		Value:    token,
 		Path:     "/",
-		MaxAge:   m.cfg.Auth.RefreshTokenTTLSec,
-		HttpOnly: true,
-		Secure:   m.cfg.Auth.RefreshTokenCookieSecure,
-		SameSite: http.SameSiteLaxMode,
-	})
-}
-
-*/
-
-func (m *handler) setRefreshTokenCookie(w http.ResponseWriter, value string) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     m.cfg.Auth.RefreshTokenCookieName,
-		Value:    value,
-		Path:     "/",
-		MaxAge:   m.cfg.Auth.RefreshTokenTTLSec,
+		MaxAge:   m.cfg.Auth.RefreshTokenCookieMaxAge,
 		HttpOnly: true,
 		Secure:   m.cfg.Auth.RefreshTokenCookieSecure,
 		SameSite: http.SameSiteStrictMode,
-	})
+	}
+	http.SetCookie(w, &cookie)
+}
+
+func (m *handler) setRefreshTokenCookieOAuthCallback(w http.ResponseWriter, token string) {
+	cookie := http.Cookie{
+		Name:     m.cfg.Auth.RefreshTokenCookieName,
+		Value:    token,
+		Path:     "/",
+		MaxAge:   m.cfg.Auth.RefreshTokenCookieMaxAge,
+		HttpOnly: true,
+		Secure:   m.cfg.Auth.RefreshTokenCookieSecure,
+		SameSite: http.SameSiteLaxMode, // Lax is required for redirects from OAuth providers
+	}
+	http.SetCookie(w, &cookie)
 }
 
 func (m *handler) clearRefreshTokenCookie(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{
+	cookie := http.Cookie{
 		Name:     m.cfg.Auth.RefreshTokenCookieName,
 		Value:    "",
 		Path:     "/",
@@ -321,5 +338,65 @@ func (m *handler) clearRefreshTokenCookie(w http.ResponseWriter) {
 		HttpOnly: true,
 		Secure:   m.cfg.Auth.RefreshTokenCookieSecure,
 		SameSite: http.SameSiteStrictMode,
-	})
+	}
+	http.SetCookie(w, &cookie)
+}
+
+func (m *handler) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
+	var req models.PasswordResetRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		m.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(m.converter.ToHTTP(
+			srverr.NewServerError(srverr.ErrBadRequest, "auth.handleForgotPassword/decode").SetError(err.Error()),
+		)))
+		return
+	}
+
+	if sErr := m.service.SendResetPasswordLink(r.Context(), req.Email); sErr != nil {
+		m.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(m.converter.ToHTTP(sErr)))
+		return
+	}
+
+	m.httpResponse.WriteResponse(w, r, http.StatusAccepted, nil)
+}
+
+func (m *handler) handleResetPassword(w http.ResponseWriter, r *http.Request) {
+	var req models.PasswordResetConfirmRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		m.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(m.converter.ToHTTP(
+			srverr.NewServerError(srverr.ErrBadRequest, "auth.handleResetPassword/decode").SetError(err.Error()),
+		)))
+		return
+	}
+
+	if sErr := m.service.ResetPassword(r.Context(), req.Token, req.NewPassword.String()); sErr != nil {
+		m.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(m.converter.ToHTTP(sErr)))
+		return
+	}
+
+	m.httpResponse.WriteResponse(w, r, http.StatusNoContent, nil)
+}
+
+func (m *handler) handleChangePassword(w http.ResponseWriter, r *http.Request) {
+	var req models.PasswordChangeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		m.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(m.converter.ToHTTP(
+			srverr.NewServerError(srverr.ErrBadRequest, "auth.handleChangePassword/decode").SetError(err.Error()),
+		)))
+		return
+	}
+
+	acc, ok := middleware.GetAuthFromContext(r)
+	if !ok {
+		m.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(m.converter.ToHTTP(
+			srverr.NewServerError(srverr.ErrUnauthorized, "auth.handleChangePassword/auth_context"),
+		)))
+		return
+	}
+
+	if sErr := m.service.ChangePassword(r.Context(), acc.ID, req.OldPassword.String(), req.NewPassword.String()); sErr != nil {
+		m.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(m.converter.ToHTTP(sErr)))
+		return
+	}
+
+	m.httpResponse.WriteResponse(w, r, http.StatusNoContent, nil)
 }

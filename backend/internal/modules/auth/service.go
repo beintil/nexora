@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/url"
@@ -12,9 +14,11 @@ import (
 	usermod "telephony/internal/modules/user"
 	"telephony/internal/shared/cache"
 	"telephony/internal/shared/database/postgres"
-	srverr "telephony/internal/shared/server_error"
+	"telephony/internal/shared/server_error"
 	"telephony/internal/shared/templates"
 	"telephony/pkg/client/email_sender"
+	"telephony/pkg/client/oauth/appleoauth"
+	"telephony/pkg/client/oauth/googleoauth"
 	"telephony/pkg/jwt"
 	"telephony/pkg/password"
 	"telephony/pkg/validator"
@@ -28,10 +32,12 @@ type service struct {
 	userSvc     usermod.Service
 	companySvc  company.Service
 	transaction postgres.Transaction
-	store       cache.Cache
+	repo        repository
 	cfg         config.Config
 
-	emailSender email_sender.Sender
+	emailSender  email_sender.Sender
+	googleClient googleoauth.Client
+	appleClient  appleoauth.Client
 }
 
 func NewService(
@@ -42,29 +48,24 @@ func NewService(
 	cfg config.Config,
 
 	emailSender email_sender.Sender,
+	googleClient googleoauth.Client,
+	appleClient appleoauth.Client,
 ) Service {
 	return &service{
 		userSvc:     userSvc,
 		companySvc:  companySvc,
 		transaction: transaction,
-		store:       store,
+		repo:        newRepository(store),
 		cfg:         cfg,
 
-		emailSender: emailSender,
+		emailSender:  emailSender,
+		googleClient: googleClient,
+		appleClient:  appleClient,
 	}
 }
 
 const (
-	authRefreshTokenKey         = "auth:refresh_token:"
-	authAccessTokenKey          = "auth:access_token:"
-	authRefreshTokenByUserIDKey = "auth:refresh_token_by_user_id:"
-	authAccessTokenByUserIDKey  = "auth:access_token_by_user_id:"
-
-	authConfirmEmailKey = "auth:link:"
-)
-
-const (
-	ServiceErrorAuthInvalidBrainPrivilegedUser srverr.ErrorTypeUnauthorized = "Долбаеб, который заходит с пользователя повышенных прав на сторону клиентского сайта, пиздуй в админку. Еще один запрос и вьебу у тебя права кретин, все логируется"
+	ServiceErrorAuthInvalidBrainPrivilegedUser srverr.ErrorTypeUnauthorized = "Privileged accounts cannot log in via the client application. Please use the admin panel."
 
 	ServiceErrorAuthRequestIsNotValid  srverr.ErrorTypeBadRequest   = "auth_request_is_not_valid"
 	ServiceErrorAuthInvalidCompanyName srverr.ErrorTypeBadRequest   = "Company name is invalid. Must be at least 5 characters long"
@@ -79,6 +80,17 @@ const (
 	ServiceErrorSendCode   srverr.ErrorTypeBadRequest = "verification_send_code_invalid"
 	ServiceErrorVerifyLink srverr.ErrorTypeBadRequest = "verification_verify_link_invalid"
 )
+
+const (
+	ServiceErrorAuthOAuthNotConfigured srverr.ErrorTypeBadRequest   = "oauth_not_configured"
+	ServiceErrorAuthOAuthInvalidState  srverr.ErrorTypeUnauthorized = "oauth_invalid_state"
+	ServiceErrorAuthOAuthNoEmail       srverr.ErrorTypeUnauthorized = "oauth_no_email"
+	ServiceErrorAuthUserAlreadyExists  srverr.ErrorTypeConflict     = "user_already_exists"
+
+	ServiceErrorAuthResetTokenInvalid srverr.ErrorTypeBadRequest = "password_reset_token_invalid"
+)
+
+var errOAuthStateNotFoundOrExpired = errors.New("oauth state not found or expired")
 
 func (s *service) Register(ctx context.Context, req *domain.AuthRegisterInput) (*domain.AuthTokens, srverr.ServerError) {
 	if req == nil {
@@ -172,15 +184,14 @@ func (s *service) VerifyLink(ctx context.Context, req *domain.VerifyLinkInput) s
 	if _, err := uuid.Parse(token); err != nil {
 		return srverr.NewServerError(ServiceErrorVerifyLink, "auth.VerifyLink/invalid_uuid").SetError(err.Error())
 	}
-	var email string
-	err := s.store.Get(ctx, authConfirmEmailKey+token, &email)
+	email, err := s.repo.getVerifyEmailLink(ctx, token)
 	if err != nil {
 		if errors.Is(err, cache.ErrorCacheValueNotFound) {
 			return srverr.NewServerError(ServiceErrorVerifyLink, "auth.VerifyLink/link_expired_or_invalid")
 		}
 		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.VerifyLinkWithTx/link_store").SetError(err.Error())
 	}
-	err = s.store.Delete(ctx, authConfirmEmailKey+token)
+	err = s.repo.deleteVerifyEmailLink(ctx, token)
 	if err != nil {
 		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.VerifyLinkWithTx/link_store").SetError(err.Error())
 	}
@@ -250,7 +261,7 @@ func (s *service) sendCodeWithTx(ctx context.Context, tx pgx.Tx, req *domain.Sen
 
 	tokenUUID := uuid.New().String()
 	authLinkTTL := time.Duration(s.cfg.Auth.AuthLinkTTLSec) * time.Second
-	if err := s.store.Set(ctx, authConfirmEmailKey+tokenUUID, emailNorm, authLinkTTL); err != nil {
+	if err := s.repo.setVerifyEmailLink(ctx, tokenUUID, emailNorm, authLinkTTL); err != nil {
 		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.SendCode/create_link").SetError(err.Error())
 	}
 
@@ -275,10 +286,6 @@ func (s *service) sendCodeWithTx(ctx context.Context, tx pgx.Tx, req *domain.Sen
 		}); err != nil {
 			return srverr.NewServerError(srverr.ErrInternalServerError, "verification.SendCode/email").SetError(err.Error())
 		}
-	}
-	err = s.store.Set(ctx, authConfirmEmailKey+tokenUUID, req.Email, authLinkTTL)
-	if err != nil {
-		return srverr.NewServerError(srverr.ErrInternalServerError, "verification.SendCode/create_link").SetError(err.Error())
 	}
 	return nil
 }
@@ -318,6 +325,14 @@ func (s *service) Login(ctx context.Context, req *domain.AuthLoginInput) (*domai
 		return nil, srverr.NewServerError(ServiceErrorAuthInvalidCredentials, "auth.LoginWithTx/bad_password")
 	}
 
+	if !user.VerifiedRegistration {
+		serverErr := s.sendCodeWithTx(ctx, tx, &domain.SendCodeInput{Email: emailNorm})
+		if serverErr != nil {
+			return nil, serverErr
+		}
+		return nil, srverr.NewServerError(ServiceErrorAuthConfirmEmail, "auth.Login/not_verified")
+	}
+
 	if user.RoleID.IsPrivileged() {
 		return nil, srverr.NewServerError(ServiceErrorAuthInvalidBrainPrivilegedUser, "auth.LoginWithTx/privileged_user")
 	}
@@ -334,8 +349,7 @@ func (s *service) Refresh(ctx context.Context, refreshToken string) (*domain.Aut
 	if parseErr != nil {
 		return nil, srverr.NewServerError(ServiceErrorAuthInvalidRefresh, "auth.RefreshWithTx/invalid_or_expired")
 	}
-	var userIDStr string
-	err := s.store.Get(ctx, authRefreshTokenKey+refreshToken, &userIDStr)
+	userIDStr, err := s.repo.getUserIDByRefreshToken(ctx, refreshToken)
 	if err != nil {
 		if errors.Is(err, cache.ErrorCacheValueNotFound) {
 			return nil, srverr.NewServerError(ServiceErrorAuthInvalidRefresh, "auth.RefreshWithTx/invalid_or_expired")
@@ -371,8 +385,7 @@ func (s *service) Logout(ctx context.Context, refreshToken string) srverr.Server
 	if refreshToken == "" {
 		return nil
 	}
-	var userIDStr string
-	err := s.store.Get(ctx, authRefreshTokenKey+refreshToken, &userIDStr)
+	userIDStr, err := s.repo.getUserIDByRefreshToken(ctx, refreshToken)
 	if err != nil {
 		if errors.Is(err, cache.ErrorCacheValueNotFound) {
 			return nil
@@ -383,7 +396,7 @@ func (s *service) Logout(ctx context.Context, refreshToken string) srverr.Server
 	if err != nil {
 		return nil
 	}
-	if delErr := s.DeleteTokensByUserID(ctx, userID); delErr != nil {
+	if delErr := s.repo.deleteTokensByUserID(ctx, userID); delErr != nil {
 		if se, ok := delErr.(srverr.ServerError); ok {
 			return se
 		}
@@ -392,42 +405,11 @@ func (s *service) Logout(ctx context.Context, refreshToken string) srverr.Server
 	return nil
 }
 
-func (s *service) DeleteTokensByUserID(ctx context.Context, userID uuid.UUID) error {
-	// Удаляем access
-	var accessTokenFromStore string
-	err := s.store.Get(ctx, authAccessTokenByUserIDKey+userID.String(), &accessTokenFromStore)
-	if err != nil && !errors.Is(err, cache.ErrorCacheValueNotFound) {
-		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.DeleteTokensByUserID/access_store").SetError(err.Error())
-	}
-	err = s.store.Delete(ctx, authAccessTokenKey+accessTokenFromStore)
-	if err != nil {
-		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.DeleteTokensByUserID/access_store").SetError(err.Error())
-	}
-	err = s.store.Delete(ctx, authAccessTokenByUserIDKey+userID.String())
-	if err != nil {
-		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.DeleteTokensByUserID/access_store").SetError(err.Error())
-	}
-
-	// Удаляем refresh
-	var refreshTokenFromStore string
-	err = s.store.Get(ctx, authRefreshTokenByUserIDKey+userID.String(), &refreshTokenFromStore)
-	if err != nil && !errors.Is(err, cache.ErrorCacheValueNotFound) {
-		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.DeleteTokensByUserID/refresh_store").SetError(err.Error())
-	}
-	err = s.store.Delete(ctx, authRefreshTokenKey+refreshTokenFromStore)
-	if err != nil {
-		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.DeleteTokensByUserID/refresh_store").SetError(err.Error())
-	}
-	err = s.store.Delete(ctx, authRefreshTokenByUserIDKey+userID.String())
-	if err != nil {
-		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.DeleteTokensByUserID/refresh_store").SetError(err.Error())
-	}
-	return nil
-}
+// DeleteTokensByUserID is handled by repo now
 
 func (s *service) issueTokens(ctx context.Context, user *domain.User) (*domain.AuthTokens, srverr.ServerError) {
 	// Удаляем существующие токены если существуют
-	err := s.DeleteTokensByUserID(ctx, user.ID)
+	err := s.repo.deleteTokensByUserID(ctx, user.ID)
 	if err != nil {
 		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "auth.issueTokens/delete_tokens").SetError(err.Error())
 	}
@@ -443,20 +425,8 @@ func (s *service) issueTokens(ctx context.Context, user *domain.User) (*domain.A
 		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "auth.issueTokens/refresh_build").SetError(err.Error())
 	}
 
-	// Сохраняем по ключу с токеном
-	if err := s.store.Set(ctx, authRefreshTokenKey+refreshToken, user.ID.String(), refreshTTL); err != nil {
-		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "auth.issueTokens/refresh_store").SetError(err.Error())
-	}
-	if err := s.store.Set(ctx, authAccessTokenKey+accessToken, user.ID.String(), accessTTL); err != nil {
-		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "auth.issueTokens/access_store").SetError(err.Error())
-	}
-
-	// Сохраняем по ключу с user_id
-	if err := s.store.Set(ctx, authAccessTokenByUserIDKey+user.ID.String(), accessToken, accessTTL); err != nil {
-		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "auth.issueTokens/access_store").SetError(err.Error())
-	}
-	if err := s.store.Set(ctx, authRefreshTokenByUserIDKey+user.ID.String(), refreshToken, refreshTTL); err != nil {
-		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "auth.issueTokens/refresh_store").SetError(err.Error())
+	if err := s.repo.setTokens(ctx, user.ID, accessToken, refreshToken, accessTTL, refreshTTL); err != nil {
+		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "auth.issueTokens/store").SetError(err.Error())
 	}
 
 	return &domain.AuthTokens{
@@ -465,19 +435,34 @@ func (s *service) issueTokens(ctx context.Context, user *domain.User) (*domain.A
 	}, nil
 }
 
-/* OAuth-related methods are temporarily disabled.
+// --- OAuth ---
+
+func (s *service) StartGoogleOAuth(ctx context.Context) (string, srverr.ServerError) {
+	if s.googleClient == nil {
+		return "", srverr.NewServerError(ServiceErrorAuthOAuthNotConfigured, "auth.StartGoogleOAuth/not_configured")
+	}
+	state, err := generateRandomString(32)
+	if err != nil {
+		return "", srverr.NewServerError(srverr.ErrInternalServerError, "auth.StartGoogleOAuth/state").SetError(err.Error())
+	}
+	ttl := secToDur(s.cfg.Auth.OAuth.OAuthStateTTLSec)
+	if err := s.setOAuthState(ctx, state, ttl); err != nil {
+		return "", srverr.NewServerError(srverr.ErrInternalServerError, "auth.StartGoogleOAuth/set_state").SetError(err.Error())
+	}
+	return s.googleClient.AuthCodeURL(state), nil
+}
 
 func (s *service) LoginOrRegisterWithGoogle(ctx context.Context, code, state string) (*domain.AuthTokens, srverr.ServerError) {
-	if s.oauthState == nil || s.googleClient == nil {
+	if s.googleClient == nil {
 		return nil, srverr.NewServerError(ServiceErrorAuthOAuthNotConfigured, "auth.LoginOrRegisterWithGoogle/not_configured")
 	}
 	code = strings.TrimSpace(code)
 	state = strings.TrimSpace(state)
-	if state == "" || code == "" {
+	if code == "" || state == "" {
 		return nil, srverr.NewServerError(ServiceErrorAuthRequestIsNotValid, "auth.LoginOrRegisterWithGoogle/empty_code_or_state")
 	}
-	if err := s.oauthState.validateAndConsumeState(ctx, state); err != nil {
-		if errors.Is(err, errStateNotFoundOrExpired) {
+	if err := s.consumeOAuthState(ctx, state); err != nil {
+		if errors.Is(err, errOAuthStateNotFoundOrExpired) {
 			return nil, srverr.NewServerError(ServiceErrorAuthOAuthInvalidState, "auth.LoginOrRegisterWithGoogle/invalid_state")
 		}
 		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "auth.LoginOrRegisterWithGoogle/state").SetError(err.Error())
@@ -492,17 +477,33 @@ func (s *service) LoginOrRegisterWithGoogle(ctx context.Context, code, state str
 	return s.findOrCreateOAuthUser(ctx, email, name)
 }
 
+func (s *service) StartAppleOAuth(ctx context.Context) (string, srverr.ServerError) {
+	if s.appleClient == nil {
+		return "", srverr.NewServerError(ServiceErrorAuthOAuthNotConfigured, "auth.StartAppleOAuth/not_configured")
+	}
+	state, err := generateRandomString(32)
+	if err != nil {
+		return "", srverr.NewServerError(srverr.ErrInternalServerError, "auth.StartAppleOAuth/state").SetError(err.Error())
+	}
+	ttl := secToDur(s.cfg.Auth.OAuth.OAuthStateTTLSec)
+	if err := s.setOAuthState(ctx, state, ttl); err != nil {
+		return "", srverr.NewServerError(srverr.ErrInternalServerError, "auth.StartAppleOAuth/set_state").SetError(err.Error())
+	}
+	redirectURI := strings.TrimSuffix(s.cfg.Auth.OAuth.OAuthBackendBaseURL, "/") + s.cfg.Auth.OAuth.OAuthApple.RedirectPath
+	return s.appleClient.AuthCodeURL(redirectURI, state), nil
+}
+
 func (s *service) LoginOrRegisterWithApple(ctx context.Context, idToken, state string) (*domain.AuthTokens, srverr.ServerError) {
-	if s.oauthState == nil || s.appleClient == nil {
+	if s.appleClient == nil {
 		return nil, srverr.NewServerError(ServiceErrorAuthOAuthNotConfigured, "auth.LoginOrRegisterWithApple/not_configured")
 	}
 	idToken = strings.TrimSpace(idToken)
 	state = strings.TrimSpace(state)
-	if state == "" || idToken == "" {
+	if idToken == "" || state == "" {
 		return nil, srverr.NewServerError(ServiceErrorAuthRequestIsNotValid, "auth.LoginOrRegisterWithApple/empty_id_token_or_state")
 	}
-	if err := s.oauthState.validateAndConsumeState(ctx, state); err != nil {
-		if errors.Is(err, errStateNotFoundOrExpired) {
+	if err := s.consumeOAuthState(ctx, state); err != nil {
+		if errors.Is(err, errOAuthStateNotFoundOrExpired) {
 			return nil, srverr.NewServerError(ServiceErrorAuthOAuthInvalidState, "auth.LoginOrRegisterWithApple/invalid_state")
 		}
 		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "auth.LoginOrRegisterWithApple/state").SetError(err.Error())
@@ -517,7 +518,7 @@ func (s *service) LoginOrRegisterWithApple(ctx context.Context, idToken, state s
 	return s.findOrCreateOAuthUser(ctx, email, "")
 }
 
-// findOrCreateOAuthUser находит пользователя по email или создаёт компанию и пользователя (OAuth: пароль случайный).
+// findOrCreateOAuthUser finds user by email or creates a new company + user (OAuth: random password, verified by default).
 func (s *service) findOrCreateOAuthUser(ctx context.Context, email, fullName string) (*domain.AuthTokens, srverr.ServerError) {
 	tx, err := s.transaction.BeginTransaction(ctx)
 	if err != nil {
@@ -539,7 +540,7 @@ func (s *service) findOrCreateOAuthUser(ctx context.Context, email, fullName str
 		return nil, serverErr
 	}
 
-	randomPass, err := randomPasswordForOAuth()
+	randomPass, err := generateRandomString(32)
 	if err != nil {
 		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "auth.findOrCreateOAuthUser/random_password").SetError(err.Error())
 	}
@@ -549,11 +550,12 @@ func (s *service) findOrCreateOAuthUser(ctx context.Context, email, fullName str
 	}
 
 	user = &domain.User{
-		ID:           uuid.New(),
-		CompanyID:    companyEntity.ID,
-		RoleID:       domain.RoleOwner,
-		Email:        &email,
-		PasswordHash: passwordHash,
+		ID:                   uuid.New(),
+		CompanyID:            companyEntity.ID,
+		RoleID:               domain.RoleOwner,
+		Email:                &email,
+		PasswordHash:         passwordHash,
+		VerifiedRegistration: true,
 	}
 	if fullName != "" {
 		user.FullName = &fullName
@@ -561,11 +563,11 @@ func (s *service) findOrCreateOAuthUser(ctx context.Context, email, fullName str
 		user.FullName = &email
 	}
 
-	if err := s.userSvc.CreateUserWithTx(ctx, tx, user); err != nil {
-		if err.GetServerError() == usermod.ServiceErrorUserAlreadyExists {
+	if createErr := s.userSvc.CreateUserWithTx(ctx, tx, user); createErr != nil {
+		if createErr.GetServerError() == usermod.ServiceErrorUserAlreadyExists {
 			return nil, srverr.NewServerError(ServiceErrorAuthUserAlreadyExists, "auth.findOrCreateOAuthUser/duplicate")
 		}
-		return nil, err
+		return nil, createErr
 	}
 	if err = s.transaction.Commit(ctx, tx); err != nil {
 		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "auth.findOrCreateOAuthUser/commit").SetError(err.Error())
@@ -573,57 +575,161 @@ func (s *service) findOrCreateOAuthUser(ctx context.Context, email, fullName str
 	return s.issueTokens(ctx, user)
 }
 
-func randomPasswordForOAuth() (string, error) {
-	b := make([]byte, 32)
+// --- OAuth state helpers ---
+
+func (s *service) setOAuthState(ctx context.Context, state string, ttl time.Duration) error {
+	if ttl <= 0 {
+		ttl = 10 * time.Minute
+	}
+	return s.repo.setOAuthState(ctx, state, ttl)
+}
+
+func (s *service) consumeOAuthState(ctx context.Context, state string) error {
+	_, err := s.repo.getOAuthState(ctx, state)
+	if err != nil {
+		if errors.Is(err, cache.ErrorCacheValueNotFound) {
+			return errOAuthStateNotFoundOrExpired
+		}
+		return err
+	}
+	_ = s.repo.deleteOAuthState(ctx, state)
+	return nil
+}
+
+func secToDur(sec int) time.Duration {
+	return time.Duration(sec) * time.Second
+}
+
+func generateRandomString(n int) (string, error) {
+	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
 	return base64.URLEncoding.EncodeToString(b), nil
 }
 
-func (s *service) StartGoogleOAuth(ctx context.Context) (redirectURL string, sErr srverr.ServerError) {
-	if s.oauthState == nil || s.googleClient == nil {
-		return "", srverr.NewServerError(ServiceErrorAuthOAuthNotConfigured, "auth.StartGoogleOAuth/not_configured")
+// --- Password Management ---
+
+func (s *service) ChangePassword(ctx context.Context, userID uuid.UUID, oldPassword, newPassword string) srverr.ServerError {
+	if err := validator.ValidatePassword(newPassword); err != nil {
+		return srverr.NewServerError(ServiceErrorAuthInvalidPassword, "auth.ChangePassword/new_password_validate").SetError(err.Error())
 	}
-	state, err := randomState()
+
+	tx, err := s.transaction.BeginTransaction(ctx)
 	if err != nil {
-		return "", srverr.NewServerError(srverr.ErrInternalServerError, "auth.StartGoogleOAuth/state").SetError(err.Error())
+		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.ChangePassword/begin").SetError(err.Error())
 	}
-	ttl := secToDur(s.cfg.Auth.OAuthStateTTLSec)
-	if ttl <= 0 {
-		ttl = 10 * time.Minute
-	}
-	if err := s.oauthState.setState(ctx, state, ttl); err != nil {
-		return "", srverr.NewServerError(srverr.ErrInternalServerError, "auth.StartGoogleOAuth/set_state").SetError(err.Error())
-	}
-	return s.googleClient.AuthCodeURL(state), nil
-}
+	defer func() { _ = s.transaction.Rollback(ctx, tx) }()
 
-func (s *service) StartAppleOAuth(ctx context.Context) (redirectURL string, sErr srverr.ServerError) {
-	if s.oauthState == nil || s.appleClient == nil {
-		return "", srverr.NewServerError(ServiceErrorAuthOAuthNotConfigured, "auth.StartAppleOAuth/not_configured")
+	user, sErr := s.userSvc.GetUserByIDWithTx(ctx, tx, userID)
+	if sErr != nil {
+		return sErr
 	}
-	state, err := randomState()
+
+	if !password.ComparePassword(user.PasswordHash, oldPassword) {
+		return srverr.NewServerError(ServiceErrorAuthInvalidCredentials, "auth.ChangePassword/old_password_compare")
+	}
+
+	newHash, err := password.HashPassword(newPassword)
 	if err != nil {
-		return "", srverr.NewServerError(srverr.ErrInternalServerError, "auth.StartAppleOAuth/state").SetError(err.Error())
+		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.ChangePassword/hash").SetError(err.Error())
 	}
-	ttl := secToDur(s.cfg.Auth.OAuthStateTTLSec)
-	if ttl <= 0 {
-		ttl = 10 * time.Minute
+
+	if sErr := s.userSvc.UpdateUserPasswordWithTx(ctx, tx, user.ID, newHash); sErr != nil {
+		return sErr
 	}
-	if err := s.oauthState.setState(ctx, state, ttl); err != nil {
-		return "", srverr.NewServerError(srverr.ErrInternalServerError, "auth.StartAppleOAuth/set_state").SetError(err.Error())
+
+	if err := s.transaction.Commit(ctx, tx); err != nil {
+		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.ChangePassword/commit").SetError(err.Error())
 	}
-	redirectURI := strings.TrimSuffix(s.cfg.Auth.OAuthBackendBaseURL, "/") + s.cfg.Auth.OAuthAppleRedirectPath
-	return s.appleClient.AuthCodeURL(redirectURI, state), nil
+
+	return nil
 }
 
-func randomState() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
+func (s *service) SendResetPasswordLink(ctx context.Context, email string) srverr.ServerError {
+	emailNorm, err := validator.ValidateEmail(email)
+	if err != nil {
+		return srverr.NewServerError(ServiceErrorAuthInvalidEmail, "auth.SendResetPasswordLink/email_validate").SetError(err.Error())
 	}
-	return base64.URLEncoding.EncodeToString(b), nil
+
+	user, sErr := s.userSvc.GetUserByEmail(ctx, emailNorm)
+	if sErr != nil {
+		if sErr.GetServerError() == usermod.ServiceErrorUserNotFound {
+			// Don't reveal if user exists for security
+			return nil
+		}
+		return sErr
+	}
+
+	token, err := generateRandomString(32)
+	if err != nil {
+		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.SendResetPasswordLink/token_gen").SetError(err.Error())
+	}
+
+	// Token valid for 1 hour
+	if err := s.repo.setPasswordResetToken(ctx, token, user.ID.String(), 1*time.Hour); err != nil {
+		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.SendResetPasswordLink/store").SetError(err.Error())
+	}
+
+	resetLink := fmt.Sprintf("%s/reset-password?token=%s", strings.TrimSuffix(s.cfg.Auth.AuthLinkBaseURL, "/"), token)
+	body := fmt.Sprintf("Reset your password by clicking here: %s", resetLink)
+
+	msg := email_sender.Message{
+		To:      emailNorm,
+		Subject: "Password Reset",
+		HTML:    body,
+	}
+
+	if err := s.emailSender.Send(ctx, msg); err != nil {
+		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.SendResetPasswordLink/email_send").SetError(err.Error())
+	}
+
+	return nil
 }
 
-*/
+func (s *service) ResetPassword(ctx context.Context, token, newPassword string) srverr.ServerError {
+	if err := validator.ValidatePassword(newPassword); err != nil {
+		return srverr.NewServerError(ServiceErrorAuthInvalidPassword, "auth.ResetPassword/password_validate").SetError(err.Error())
+	}
+
+	userIDStr, err := s.repo.getPasswordResetToken(ctx, token)
+	if err != nil {
+		if errors.Is(err, cache.ErrorCacheValueNotFound) {
+			return srverr.NewServerError(ServiceErrorAuthResetTokenInvalid, "auth.ResetPassword/token_not_found")
+		}
+		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.ResetPassword/get_token").SetError(err.Error())
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.ResetPassword/parse_id").SetError(err.Error())
+	}
+
+	tx, err := s.transaction.BeginTransaction(ctx)
+	if err != nil {
+		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.ResetPassword/begin").SetError(err.Error())
+	}
+	defer func() { _ = s.transaction.Rollback(ctx, tx) }()
+
+	user, sErr := s.userSvc.GetUserByIDWithTx(ctx, tx, userID)
+	if sErr != nil {
+		return sErr
+	}
+
+	newHash, err := password.HashPassword(newPassword)
+	if err != nil {
+		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.ResetPassword/hash").SetError(err.Error())
+	}
+
+	if sErr := s.userSvc.UpdateUserPasswordWithTx(ctx, tx, user.ID, newHash); sErr != nil {
+		return sErr
+	}
+
+	if err := s.transaction.Commit(ctx, tx); err != nil {
+		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.ResetPassword/commit").SetError(err.Error())
+	}
+
+	_ = s.repo.deletePasswordResetToken(ctx, token)
+
+	return nil
+}

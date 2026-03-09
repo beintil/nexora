@@ -21,6 +21,7 @@ const (
 	ServiceErrorUserAlreadyExists srverr.ErrorTypeConflict   = "user_already_exists"
 	ServiceErrorCompanyNotFound   srverr.ErrorTypeNotFound   = "company_not_found"
 	ServiceErrorUserBadRequest    srverr.ErrorTypeBadRequest = "user_bad_request"
+	ServiceErrorForbidden         srverr.ErrorTypeForbidden  = "user_forbidden"
 )
 
 type service struct {
@@ -134,10 +135,14 @@ func (s *service) GetProfile(ctx context.Context, userID string) (*domain.Profil
 		}
 		return nil, sErr
 	}
+	return s.toProfile(u, c.Name), nil
+}
+
+func (s *service) toProfile(u *domain.User, companyName string) *domain.Profile {
 	return &domain.Profile{
 		ID:          u.ID,
 		CompanyID:   u.CompanyID,
-		CompanyName: c.Name,
+		CompanyName: companyName,
 		RoleID:      u.RoleID,
 		Email:       u.Email,
 		FullName:    u.FullName,
@@ -145,7 +150,7 @@ func (s *service) GetProfile(ctx context.Context, userID string) (*domain.Profil
 		AvatarID:    u.AvatarID,
 		CreatedAt:   u.CreatedAt,
 		UpdatedAt:   u.UpdatedAt,
-	}, nil
+	}
 }
 
 func (s *service) UpdateProfile(ctx context.Context, userID string, input *domain.UpdateProfileInput) (*domain.Profile, srverr.ServerError) {
@@ -177,26 +182,12 @@ func (s *service) UpdateProfile(ctx context.Context, userID string, input *domai
 	}
 	c, sErr := s.companyService.GetCompanyByIDWithTx(ctx, tx, u.CompanyID)
 	if sErr != nil {
-		if sErr.GetServerError() == company.ServiceErrorCompanyNotFound {
-			return nil, srverr.NewServerError(ServiceErrorCompanyNotFound, "user.UpdateProfile/company")
-		}
 		return nil, sErr
 	}
 	if err := s.transaction.Commit(ctx, tx); err != nil {
 		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "user.UpdateProfileWithTx/commit").SetError(err.Error())
 	}
-	return &domain.Profile{
-		ID:          u.ID,
-		CompanyID:   u.CompanyID,
-		CompanyName: c.Name,
-		RoleID:      u.RoleID,
-		Email:       u.Email,
-		FullName:    u.FullName,
-		AvatarURL:   u.AvatarURL,
-		AvatarID:    u.AvatarID,
-		CreatedAt:   u.CreatedAt,
-		UpdatedAt:   u.UpdatedAt,
-	}, nil
+	return s.toProfile(u, c.Name), nil
 }
 
 func (s *service) UploadAvatar(ctx context.Context, userID string, data []byte, contentType string) (*domain.Profile, srverr.ServerError) {
@@ -257,18 +248,7 @@ func (s *service) UploadAvatar(ctx context.Context, userID string, data []byte, 
 	if err := s.transaction.Commit(ctx, tx); err != nil {
 		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "user.UploadAvatarWithTx/commit").SetError(err.Error())
 	}
-	return &domain.Profile{
-		ID:          u.ID,
-		CompanyID:   u.CompanyID,
-		CompanyName: c.Name,
-		RoleID:      u.RoleID,
-		Email:       u.Email,
-		FullName:    u.FullName,
-		AvatarURL:   u.AvatarURL,
-		AvatarID:    u.AvatarID,
-		CreatedAt:   u.CreatedAt,
-		UpdatedAt:   u.UpdatedAt,
-	}, nil
+	return s.toProfile(u, c.Name), nil
 }
 
 func (s *service) SetUserIsVerifiedWithTx(ctx context.Context, tx pgx.Tx, userID string) srverr.ServerError {
@@ -281,6 +261,109 @@ func (s *service) SetUserIsVerifiedWithTx(ctx context.Context, tx pgx.Tx, userID
 			return srverr.NewServerError(ServiceErrorUserNotFound, "user.SetUserIsVerifiedWithTx/not_found")
 		}
 		return srverr.NewServerError(srverr.ErrInternalServerError, "user.SetUserIsVerifiedWithTx/repo").SetError(err.Error())
+	}
+	return nil
+}
+func (s *service) GetUserByEmail(ctx context.Context, email string) (*domain.User, srverr.ServerError) {
+	tx, err := s.transaction.BeginTransaction(ctx)
+	if err != nil {
+		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "user.GetUserByEmail/begin").SetError(err.Error())
+	}
+	defer func() { _ = s.transaction.Rollback(ctx, tx) }()
+
+	u, err := s.repo.getUserByEmail(ctx, tx, email)
+	if err != nil {
+		if errors.Is(err, errRepoUserNotFound) {
+			return nil, srverr.NewServerError(ServiceErrorUserNotFound, "user.GetUserByEmail/not_found")
+		}
+		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "user.GetUserByEmail/repo").SetError(err.Error())
+	}
+	return u, nil
+}
+
+func (s *service) GetCompanyUsers(ctx context.Context, companyID uuid.UUID) ([]*domain.User, srverr.ServerError) {
+	tx, err := s.transaction.BeginTransaction(ctx)
+	if err != nil {
+		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "user.GetCompanyUsers/begin").SetError(err.Error())
+	}
+	defer func() { _ = s.transaction.Rollback(ctx, tx) }()
+
+	users, err := s.repo.getCompanyUsers(ctx, tx, companyID)
+	if err != nil {
+		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "user.GetCompanyUsers/repo").SetError(err.Error())
+	}
+
+	// Фильтруем админские роли для обычных запросов
+	filtered := make([]*domain.User, 0, len(users))
+	for _, u := range users {
+		if u.RoleID != domain.RoleAdmin && u.RoleID != domain.RoleSupport {
+			filtered = append(filtered, u)
+		}
+	}
+
+	return filtered, nil
+}
+
+func (s *service) DeleteUser(ctx context.Context, userID uuid.UUID) srverr.ServerError {
+	tx, err := s.transaction.BeginTransaction(ctx)
+	if err != nil {
+		return srverr.NewServerError(srverr.ErrInternalServerError, "user.DeleteUser/begin").SetError(err.Error())
+	}
+	defer func() { _ = s.transaction.Rollback(ctx, tx) }()
+
+	if err := s.repo.deleteUser(ctx, tx, userID); err != nil {
+		return srverr.NewServerError(srverr.ErrInternalServerError, "user.DeleteUser/repo").SetError(err.Error())
+	}
+	if err := s.transaction.Commit(ctx, tx); err != nil {
+		return srverr.NewServerError(srverr.ErrInternalServerError, "user.DeleteUser/commit").SetError(err.Error())
+	}
+	return nil
+}
+
+func (s *service) CreateStaff(ctx context.Context, companyID uuid.UUID, email, fullName string, roleID domain.Role) (*domain.User, srverr.ServerError) {
+	tx, err := s.transaction.BeginTransaction(ctx)
+	if err != nil {
+		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "user.CreateStaff/begin").SetError(err.Error())
+	}
+	defer func() { _ = s.transaction.Rollback(ctx, tx) }()
+
+	// Проверяем роль: пользователи могут создавать только Owner или Manager
+	if roleID == domain.RoleAdmin || roleID == domain.RoleSupport {
+		return nil, srverr.NewServerError(ServiceErrorForbidden, "user.CreateStaff/invalid_role")
+	}
+
+	// Проверяем существование
+	existing, err := s.repo.getUserByEmail(ctx, tx, email)
+	if err == nil && existing != nil {
+		return nil, srverr.NewServerError(ServiceErrorUserAlreadyExists, "user.CreateStaff/check_exists")
+	}
+
+	u := &domain.User{
+		ID:                   uuid.New(),
+		CompanyID:            companyID,
+		RoleID:               roleID,
+		Email:                &email,
+		FullName:             &fullName,
+		VerifiedRegistration: true, // Персонал верифицирован админом
+	}
+
+	if err := s.repo.createUser(ctx, tx, u); err != nil {
+		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "user.CreateStaff/create").SetError(err.Error())
+	}
+
+	if err := s.transaction.Commit(ctx, tx); err != nil {
+		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "user.CreateStaff/commit").SetError(err.Error())
+	}
+
+	return u, nil
+}
+
+func (s *service) UpdateUserPasswordWithTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, passwordHash string) srverr.ServerError {
+	if err := s.repo.updateUserPassword(ctx, tx, userID, passwordHash); err != nil {
+		if errors.Is(err, errRepoUserNotFound) {
+			return srverr.NewServerError(ServiceErrorUserNotFound, "user.UpdateUserPasswordWithTx/not_found")
+		}
+		return srverr.NewServerError(srverr.ErrInternalServerError, "user.UpdateUserPasswordWithTx/repo").SetError(err.Error())
 	}
 	return nil
 }

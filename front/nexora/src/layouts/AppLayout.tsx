@@ -1,162 +1,210 @@
-import { useState, useEffect } from "react"
-import { Outlet, Navigate, NavLink, Link } from "react-router-dom"
+import { useState, useEffect, memo } from "react"
+import { Navigate, NavLink, useLocation, useNavigate, useOutlet } from "react-router-dom"
 import type { LucideIcon } from "lucide-react"
 import { useAuth } from "../context/AuthContext"
 import { useProfileContext, ProfileProvider } from "../context/ProfileContext"
 import { DEFAULT_MENU_ITEMS } from "../config/menu"
-import { Home, Phone, Settings, BarChart3, LogOut, Loader2, LayoutDashboard, User } from "lucide-react"
+import { CommandMenu } from "../components/CommandMenu"
+import { Home, Phone, Settings, BarChart3, LogOut, Loader2, LayoutDashboard, Bell, Users } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
+import { cn } from "@/lib/utils"
+import { NotificationPanel } from "../components/NotificationPanel"
+import { useNotifications } from "../hooks/useNotifications"
 
 const iconByKey: Record<string, LucideIcon> = {
-    home: Home,
-    layout: LayoutDashboard,
-    phone: Phone,
-    settings: Settings,
-    chart: BarChart3,
+  home: Home,
+  layout: LayoutDashboard,
+  phone: Phone,
+  settings: Settings,
+  chart: BarChart3,
+  users: Users,
 }
 
 const MENU_GROUPS = [
-    { label: "Основное", ids: ["dashboard", "dashboards", "calls"] },
-    { label: "Аналитика", ids: ["analytics"] },
-    { label: "Система", ids: ["settings"] },
+  { label: "Overview", ids: ["dashboard", "dashboards", "calls"] },
+  { label: "Analytics", ids: ["analytics"] },
+  { label: "System", ids: ["team", "settings"] },
 ]
 
-function AppLayoutContent() {
-    const { logout } = useAuth()
-    const { profile, loading: profileLoading, roleLabel } = useProfileContext()
-    const [avatarImgError, setAvatarImgError] = useState(false)
+const Sidebar = memo(({ profile, profileLoading, location, navigate, logout }: any) => {
+  const [avatarImgError, setAvatarImgError] = useState(false)
+  
+  useEffect(() => {
+    setAvatarImgError(false)
+  }, [profile?.avatar_url])
 
-    useEffect(() => {
-        setAvatarImgError(false)
-    }, [profile?.avatar_url])
+  const displayName = profile?.full_name?.trim() || profile?.email?.split("@")[0] || "User"
+  const initials = displayName.slice(0, 2).toUpperCase()
 
-    const displayName =
-        profile?.full_name?.trim() ||
-        profile?.email?.split("@")[0] ||
-        ""
-    const initials = displayName
-        ? displayName
-              .split(/\s+/)
-              .map((s) => s[0])
-              .join("")
-              .toUpperCase()
-              .slice(0, 2)
-        : ""
-
-    return (
-        <div className="min-h-screen flex" style={{ backgroundColor: "var(--theme-bg-page)" }}>
-            <aside className="w-60 flex flex-col shrink-0 border-r border-slate-200/80 bg-white shadow-[4px_0_24px_-4px_rgba(0,0,0,0.06)]">
-                <div className="px-5 py-6 border-b border-slate-100">
-                    <span className="text-xl font-bold tracking-tight text-slate-800" style={{ fontFamily: '"Cormorant Garamond", Georgia, serif' }}>
-                        Nexora
-                    </span>
-                </div>
-                <nav className="flex-1 py-5 px-3 overflow-auto">
-                    {MENU_GROUPS.map((group) => (
-                        <div key={group.label} className="mb-5">
-                            <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-                                {group.label}
-                            </p>
-                            <div className="space-y-0.5">
-                                {DEFAULT_MENU_ITEMS.filter((i) => group.ids.includes(i.id)).map((item) => {
-                                    const Icon = iconByKey[item.icon] ?? Home
-                                    return (
-                                        <NavLink
-                                            key={item.id}
-                                            to={item.path}
-                                            end={item.path !== "/calls"}
-                                            className={({ isActive }) =>
-                                                `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-                                                    isActive
-                                                        ? "bg-indigo-50 text-indigo-700 shadow-sm"
-                                                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                                                }`
-                                            }
-                                        >
-                                            {({ isActive }) => (
-                                                <>
-                                                    <span className={`flex items-center justify-center w-8 h-8 rounded-lg shrink-0 transition-colors ${isActive ? "bg-indigo-100 text-indigo-600" : "bg-transparent"}`}>
-                                                        <Icon className="h-4 w-4" />
-                                                    </span>
-                                                    <span>{item.label}</span>
-                                                </>
-                                            )}
-                                        </NavLink>
-                                    )
-                                })}
-                            </div>
-                        </div>
-                    ))}
-                </nav>
-                <div className="p-3 border-t border-slate-100 bg-slate-50/50">
-                    <button
-                        onClick={logout}
-                        className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors mb-2"
-                    >
-                        <LogOut className="h-4 w-4 shrink-0" />
-                        Выйти
-                    </button>
-                    <Link
-                        to="/profile"
-                        className="flex items-center gap-3 px-3 py-3 rounded-xl bg-white border border-slate-200/80 shadow-sm hover:shadow transition-shadow"
-                    >
-                        {profile?.avatar_url && !avatarImgError ? (
-                            <img
-                                src={profile.avatar_url}
-                                alt=""
-                                className="w-10 h-10 rounded-xl object-cover border border-slate-200"
-                                onError={() => setAvatarImgError(true)}
-                            />
-                        ) : (
-                            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-semibold bg-slate-200 text-slate-600 shrink-0" aria-hidden>
-                                {initials || <User className="h-4 w-4" />}
-                            </div>
-                        )}
-                        <div className="min-w-0 flex-1">
-                            <p className="text-sm font-semibold truncate text-slate-800">{displayName || "Профиль"}</p>
-                            {profile?.role_id !== undefined && (
-                                <p className="text-xs truncate mt-0.5 text-slate-500">{roleLabel(profile.role_id)}</p>
-                            )}
-                            <p className="text-xs truncate mt-0.5 text-slate-400">{profile?.email ?? ""}</p>
-                        </div>
-                    </Link>
-                </div>
-            </aside>
-            <main className="flex-1 flex flex-col min-h-0">
-                <header className="h-14 shrink-0 flex items-center px-6 border-b border-[var(--theme-border)]" style={{ backgroundColor: "var(--theme-bg-header)" }}>
-                    <span className="text-sm truncate" style={{ color: "var(--theme-text-muted)" }}>
-                        {profileLoading ? (
-                            <span className="inline-block w-32 h-4 rounded animate-pulse" style={{ backgroundColor: "var(--theme-active)" }} />
-                        ) : (
-                            profile?.company_name ?? "—"
-                        )}
-                    </span>
-                </header>
-                <div className="flex-1 overflow-auto">
-                    <Outlet />
-                </div>
-            </main>
+  return (
+    <aside className="fixed inset-y-0 left-0 z-20 flex w-60 flex-col border-r border-border bg-sidebar-background">
+      {/* Workspace Selector */}
+      <div className="flex h-12 w-full items-center px-4 border-b border-border hover:bg-sidebar-accent cursor-pointer transition-colors">
+        <div className="flex size-6 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-sm mr-2 shrink-0">
+          <span className="font-mono text-xs font-bold">N</span>
         </div>
-    )
+        <div className="flex flex-col flex-1 overflow-hidden">
+           <span className="text-sm font-medium text-sidebar-foreground truncate">
+              {profileLoading ? "Loading..." : profile?.company_name || "Personal Workspace"}
+           </span>
+        </div>
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex flex-1 flex-col overflow-y-auto px-3 py-4 gap-6 scrollbar-none">
+        {MENU_GROUPS.map((group, idx) => (
+          <div key={idx} className="flex flex-col gap-1 w-full">
+            <span className="px-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">
+              {group.label}
+            </span>
+            {DEFAULT_MENU_ITEMS.filter((i) => group.ids.includes(i.id)).map((item) => {
+              const Icon = iconByKey[item.icon] ?? Home
+              const isActive = location.pathname.startsWith(item.path) && (item.path !== "/" || location.pathname === "/")
+              
+              return (
+                <NavLink
+                  key={item.id}
+                  to={item.path}
+                  className={cn(
+                      "relative flex items-center h-8 rounded-md px-2 text-sm transition-colors",
+                      isActive 
+                          ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium" 
+                          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  )}
+                >
+                  <Icon className={cn("size-4 mr-2", isActive ? "text-primary dark:text-primary" : "text-muted-foreground")} />
+                  {item.label}
+                </NavLink>
+              )
+            })}
+          </div>
+        ))}
+      </nav>
+
+      {/* User Profile */}
+      <div className="p-3 border-t border-border">
+          <div 
+              onClick={() => navigate("/profile")}
+              className="flex items-center p-2 rounded-md hover:bg-sidebar-accent transition-colors cursor-pointer group"
+          >
+              <div className="size-8 rounded-full overflow-hidden bg-muted flex items-center justify-center border border-border shrink-0">
+                  {profile?.avatar_url && !avatarImgError ? (
+                      <img src={profile.avatar_url} alt="" className="size-full object-cover" onError={() => setAvatarImgError(true)} />
+                  ) : (
+                      <span className="text-xs font-mono text-muted-foreground">{initials}</span>
+                  )}
+              </div>
+              <div className="flex flex-col ml-3 flex-1 overflow-hidden">
+                  <span className="text-xs font-medium text-sidebar-foreground truncate">{displayName}</span>
+                  <span className="text-[10px] text-muted-foreground truncate">{profile?.email || "No email"}</span>
+              </div>
+              <button
+                  onClick={(e) => { 
+                      e.preventDefault(); 
+                      e.stopPropagation();
+                      logout(); 
+                  }}
+                  className="p-1 rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Log out"
+              >
+                  <LogOut className="size-4" />
+              </button>
+          </div>
+      </div>
+    </aside>
+  )
+})
+
+const Header = memo(() => {
+  const [isNotifOpen, setIsNotifOpen] = useState(false)
+  const { unreadCount } = useNotifications()
+
+  return (
+    <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center justify-between border-b border-border bg-background px-6">
+      <div className="flex-1 max-w-md">
+         <CommandMenu />
+      </div>
+
+      <div className="flex items-center gap-4 relative">
+         <button 
+            onClick={() => setIsNotifOpen(!isNotifOpen)}
+            className={cn(
+                "relative size-8 flex items-center justify-center rounded-md text-muted-foreground hover:bg-secondary transition-colors",
+                isNotifOpen && "bg-secondary text-foreground"
+            )}
+         >
+            <Bell className="size-4" />
+            {unreadCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-primary border-2 border-background" />
+            )}
+         </button>
+         <NotificationPanel isOpen={isNotifOpen} onClose={() => setIsNotifOpen(false)} />
+      </div>
+    </header>
+  )
+})
+
+function AppLayoutContent() {
+  const { logout } = useAuth()
+  const { profile, loading: profileLoading } = useProfileContext()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const outlet = useOutlet()
+
+  return (
+    <div className="flex min-h-screen w-full bg-background text-foreground font-sans">
+      
+      <Sidebar 
+        profile={profile} 
+        profileLoading={profileLoading} 
+        location={location} 
+        navigate={navigate} 
+        logout={logout} 
+      />
+
+      <main className="flex flex-1 flex-col pl-60">
+        <Header />
+
+        {/* Page Content */}
+        <div className="flex-1 overflow-auto bg-muted/20 dark:bg-background">
+          <div className="w-full h-full p-6">
+            <AnimatePresence mode="wait">
+                <motion.div
+                key={location.pathname}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+                className="mx-auto w-full max-w-7xl h-full"
+                >
+                {outlet}
+                </motion.div>
+            </AnimatePresence>
+          </div>
+        </div>
+      </main>
+    </div>
+  )
 }
 
 export default function AppLayout() {
-    const { accessToken, isRestoring } = useAuth()
+  const { accessToken, isRestoring } = useAuth()
 
-    if (isRestoring) {
-        return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-                <Loader2 className="h-10 w-10 text-slate-400 animate-spin" />
-            </div>
-        )
-    }
-
-    if (!accessToken) {
-        return <Navigate to="/" replace />
-    }
-
+  if (isRestoring) {
     return (
-        <ProfileProvider accessToken={accessToken}>
-            <AppLayoutContent />
-        </ProfileProvider>
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="size-8 animate-spin text-muted-foreground/50" />
+      </div>
     )
+  }
+
+  if (!accessToken) {
+    return <Navigate to="/" replace />
+  }
+
+  return (
+    <ProfileProvider accessToken={accessToken}>
+      <AppLayoutContent />
+    </ProfileProvider>
+  )
 }
