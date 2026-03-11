@@ -144,6 +144,8 @@ var dictionaryValues = []*dictionary{
 		Value:       "call_direction_outbound_dial",
 		Description: "исходящий звонок, созданный внутри Twilio с помощью XML-тега <Dial> (например, когда вы внутри звонка перенаправляете на другой номер)",
 	},
+
+	// Plan Limit Types
 	{
 		MainType:    "PlanLimitType",
 		Name:        "PlanLimitTypeCall",
@@ -158,8 +160,42 @@ var dictionaryValues = []*dictionary{
 	},
 	{
 		MainType:    "PlanLimitType",
+		Name:        "PlanLimitTypePhoneMessages",
+		Value:       "plan_limit_type_phone_messages",
+		Description: "ключь для плана лимитов по количеству сообщений на отправку на телефон",
+	},
+	{
+		MainType:    "PlanLimitType",
 		Name:        "PlanLimitTypeTelegramMessages",
 		Value:       "plan_limit_type_telegram_messages",
 		Description: "ключь для плана лимитов по количеству сообщений на отправку в телеграм",
+	},
+
+	// Payment Methods
+	{
+		MainType:    "PaymentMethod",
+		Name:        "PaymentMethodRobokassa",
+		Value:       "payment_method_robokassa",
+		Description: "метод оплаты через Robokassa",
+	},
+
+	// Payment Status
+	{
+		MainType:    "PaymentStatus",
+		Name:        "PaymentStatusPaid",
+		Value:       "payment_status_paid",
+		Description: "платеж успешно оплачен",
+	},
+	{
+		MainType:    "PaymentStatus",
+		Name:        "PaymentStatusPending",
+		Value:       "payment_status_pending",
+		Description: "платеж ожидает оплаты",
+	},
+	{
+		MainType:    "PaymentStatus",
+		Name:        "PaymentStatusFailed",
+		Value:       "payment_status_failed",
+		Description: "платеж не удался",
 	},
 }

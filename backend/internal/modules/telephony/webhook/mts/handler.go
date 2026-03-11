@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"telephony/internal/domain"
 	"telephony/internal/modules/telephony/entity"
+	"telephony/internal/modules/telephony/provider"
 	"telephony/internal/modules/telephony/webhook"
 	"telephony/internal/shared/dto"
 	"telephony/internal/shared/middleware"
@@ -53,14 +54,15 @@ func (h *webhookHandler) handleMTSVoiceStatus(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	worker, convErr := entity.MTSToCallWorker(&req)
-	if convErr != nil {
-		sErr := srverr.NewServerError(ServiceErrorMTSBadRequest, "mts.handleMTSVoiceStatus/convert").SetError(convErr.Error())
-		h.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(h.converter.ToHTTP(sErr)))
-		return
+	rawBody, _ := json.Marshal(req)
+	webhookReq := &provider.WebhookRequest{
+		Headers: map[string]string{},
+		Query:   map[string]string{},
+		Form:    map[string]string{},
+		Body:    rawBody,
 	}
 
-	sErr := h.call.VoiceStatus(r.Context(), domain.MTS, worker)
+	sErr := h.call.HandleWebhookRoute(r.Context(), domain.MTS, webhookReq)
 	if sErr != nil {
 		h.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(h.converter.ToHTTP(sErr)))
 		return

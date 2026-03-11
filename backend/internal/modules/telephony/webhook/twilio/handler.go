@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"telephony/internal/domain"
 	"telephony/internal/modules/telephony/entity"
+	"telephony/internal/modules/telephony/provider"
 	"telephony/internal/modules/telephony/webhook"
 	"telephony/internal/shared/dto"
 	"telephony/internal/shared/middleware"
@@ -60,20 +61,23 @@ func (m *webhookHandler) handleTwilioVoiceStatus(w http.ResponseWriter, r *http.
 		return
 	}
 
-	msg := dto.TwilioCallStatusFormToDomain(&req)
-	if msg == nil {
-		sErr := srverr.NewServerError(ServiceErrorTwilioBadRequest, "twilio.handleTwilioVoiceStatus/validate").SetError("invalid request")
-		m.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(m.converter.ToHTTP(sErr)))
-		return
-	}
-	worker, err := entity.TwilioToCallWorker(msg)
-	if err != nil {
-		sErr := srverr.NewServerError(ServiceErrorTwilioBadRequest, "twilio.handleTwilioVoiceStatus/convert").SetError(err.Error())
-		m.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(m.converter.ToHTTP(sErr)))
-		return
+	//msg := dto.TwilioCallStatusFormToDomain(&req)
+	//if msg == nil {
+	//	sErr := srverr.NewServerError(ServiceErrorTwilioBadRequest, "twilio.handleTwilioVoiceStatus/validate").SetError("invalid request")
+	//	m.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(m.converter.ToHTTP(sErr)))
+	//	return
+	//}
+
+	// Новый флоу: собираем WebhookRequest и делегируем в TelephonyCall.HandleWebhookRoute.
+	rawBody, _ := json.Marshal(req)
+	webhookReq := &provider.WebhookRequest{
+		Headers: map[string]string{}, // при необходимости можно добавить нужные заголовки
+		Query:   map[string]string{},
+		Form:    map[string]string{},
+		Body:    rawBody,
 	}
 
-	sErr := m.call.VoiceStatus(r.Context(), domain.Twilio, worker)
+	sErr := m.call.HandleWebhookRoute(r.Context(), domain.Twilio, webhookReq)
 	if sErr != nil {
 		m.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(m.converter.ToHTTP(sErr)))
 		return

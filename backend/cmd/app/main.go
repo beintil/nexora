@@ -16,7 +16,6 @@ import (
 	"telephony/internal/modules/company"
 	"telephony/internal/modules/countries"
 	"telephony/internal/modules/notification"
-	"telephony/internal/modules/plan"
 	telephonywebhook "telephony/internal/modules/telephony/webhook"
 	mango2 "telephony/internal/modules/telephony/webhook/mango"
 	mts2 "telephony/internal/modules/telephony/webhook/mts"
@@ -153,7 +152,6 @@ func initBusinessLogic(
 	callEventsRepos := call_events.NewRepository()
 	callRepos := call.NewRepository()
 	companyRepos := company.NewRepository()
-	planRepos := plan.NewRepository()
 	userRepos := user.NewRepository()
 	notificationRepos := notification.NewRepository()
 
@@ -166,13 +164,18 @@ func initBusinessLogic(
 		cfg.Sms.Smtp.From,
 	)
 
-	// Init Services
+	//robokassaClient := robokassa.NewClient(robokassa.Config{
+	//	MerchantLogin: cfg.Payment.Robokassa.MerchantLogin,
+	//	Password1:     cfg.Payment.Robokassa.Password1,
+	//	Password2:     cfg.Payment.Robokassa.Password2,
+	//	IsTest:        cfg.Payment.Robokassa.TestMode,
+	//})
+
 	countriesService := countries.NewService(countryRepos, transaction, countriesClient)
 	callEventsService := call_events.NewService(callEventsRepos, transaction)
-	planService := plan.NewService(planRepos, transaction)
 	callService := call.NewService(callEventsService, callRepos, transaction)
 	companyService := company.NewService(callService, companyRepos, transaction)
-	telephonyIngestionPipelineService := telephony_ingestion_pipeline.NewService(countriesService, callService, companyService, planService, transaction)
+	telephonyIngestionPipelineService := telephony_ingestion_pipeline.NewService(countriesService, callService, companyService, transaction)
 	telephonyCallService := telephonywebhook.NewTelephonyCall(telephonyIngestionPipelineService)
 	notificationService := notification.NewService(notificationRepos, transaction)
 
@@ -192,7 +195,7 @@ func initBusinessLogic(
 		log.Panic("storage ping: ", err)
 	}
 
-	userService := user.NewService(userRepos, companyService, transaction, s3Storage, cfg.Storage.AvatarPrefix)
+	userService := user.NewService(userRepos, companyService, transaction, s3Storage, emailSender, cfg.Storage.AvatarPrefix)
 
 	// OAuth Clients
 	googleOAuthClient, err := googleoauth.NewClient(

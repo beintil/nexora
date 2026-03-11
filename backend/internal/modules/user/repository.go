@@ -134,7 +134,7 @@ func (r *repositoryImpl) deleteUser(ctx context.Context, tx pgx.Tx, userID uuid.
 
 func (r *repositoryImpl) getCompanyUsers(ctx context.Context, tx pgx.Tx, companyID uuid.UUID) ([]*domain.User, error) {
 	const query = `SELECT id, company_id, role_id, email, password_hash, full_name, avatar_url, avatar_id, verified_registration, is_delete, created_at, updated_at
-		FROM users WHERE company_id = $1 AND is_delete = false ORDER BY created_at DESC`
+		FROM users WHERE company_id = $1 AND is_delete = false ORDER BY role_id`
 	rows, err := tx.Query(ctx, query, companyID)
 	if err != nil {
 		return nil, err

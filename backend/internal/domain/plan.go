@@ -6,6 +6,14 @@ import (
 	"github.com/google/uuid"
 )
 
+// CompanyPlans — агрегат активных планов компании
+type CompanyPlans struct {
+	CompanyID uuid.UUID
+
+	CompanyPlans   []*CompanyPlan
+	PlansUsageOver []*PlanUsageOver
+}
+
 type CompanyPlan struct {
 	ID        uuid.UUID
 	CompanyID uuid.UUID
@@ -14,9 +22,7 @@ type CompanyPlan struct {
 	StartedAt time.Time
 	EndsAt    time.Time
 
-	Plan           *Plan
-	PlansUsage     []*PlanUsage
-	PlansUsageOver []*PlanUsageOver
+	Plan *Plan
 }
 
 type Plan struct {
@@ -35,6 +41,8 @@ type PlanLimit struct {
 	LimitType PlanLimitType
 	Value     int64
 	Extra     map[string]any
+
+	PlansUsage *PlanUsage
 }
 
 type PlanUsage struct {

@@ -2,11 +2,12 @@ package telephony_ingestion_pipeline
 
 import (
 	"context"
+
 	"telephony/internal/domain"
 	"telephony/internal/modules/call"
 	"telephony/internal/modules/company"
 	"telephony/internal/modules/countries"
-	"telephony/internal/modules/plan"
+	"telephony/internal/modules/telephony/provider"
 	"telephony/internal/shared/database/postgres"
 	srverr "telephony/internal/shared/server_error"
 
@@ -18,8 +19,6 @@ type service struct {
 	callService    call.Service
 	companyService company.Service
 
-	planService plan.Service
-
 	pool postgres.Transaction
 }
 
@@ -28,16 +27,12 @@ func NewService(
 	callService call.Service,
 	companyService company.Service,
 
-	planService plan.Service,
-
 	pool postgres.Transaction,
 ) Service {
 	return &service{
 		countryService: countryService,
 		callService:    callService,
 		companyService: companyService,
-
-		planService: planService,
 
 		pool: pool,
 	}
@@ -112,6 +107,41 @@ func (s *service) CallWorker(ctx context.Context, call *domain.CallWorker, telep
 			SetError(err.Error())
 	}
 	return nil
+}
+
+// HandleWebhookEvent — На основе нормализованного события формирует CallWorker
+func (s *service) HandleWebhookEvent(ctx context.Context, event *provider.CallWebhookEvent) srverr.ServerError {
+	if event == nil {
+		return srverr.NewServerError(ServiceErrorCallIsNotValid, "telephony_ingestion_pipeline_.HandleWebhookEvent/nil_event")
+	}
+
+	callWorker := &domain.CallWorker{
+		Call: &domain.Call{
+			ExternalParentCallID: event.ExternalParentCallID,
+			ExternalCallID:       event.ExternalCallID,
+			FromNumber:           event.FromNumber,
+			ToNumber:             event.ToNumber,
+			Direction:            event.Direction,
+			Details: &domain.CallDetails{
+				RecordingSid:      event.RecordingID,
+				RecordingURL:      event.RecordingURL,
+				RecordingDuration: event.RecordingDurationSecond,
+				FromCountry:       event.FromCountry,
+				FromCity:          event.FromCity,
+				ToCountry:         event.ToCountry,
+				ToCity:            event.ToCity,
+				Carrier:           event.Carrier,
+				Trunk:             event.Trunk,
+			},
+		},
+		Event: &domain.CallEvent{
+			Status:    event.Status,
+			Timestamp: event.OccurredAt,
+		},
+		TelephonyAccountID: event.TelephonyAccountID,
+	}
+
+	return s.CallWorker(ctx, callWorker, event.TelephonyName)
 }
 
 func (s *service) normalizeCountryCodeOrDefaultTH(ctx context.Context, tx pgx.Tx, country string) (string, srverr.ServerError) {

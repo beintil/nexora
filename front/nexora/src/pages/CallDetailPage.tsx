@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Phone, Clock, MapPin, Music, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { ArrowLeft, Phone, Clock, MapPin, Music, ChevronDown, ChevronRight } from "lucide-react";
 import { useCallDetail } from "../hooks/useCallDetail";
 import type { CallTreeResponse } from "../api/calls";
 
@@ -35,11 +35,7 @@ export default function CallDetailPage() {
     const { data: tree, loading, error } = useCallDetail(id);
 
     if (loading) {
-        return (
-            <div className="flex-1 flex items-center justify-center min-h-[50vh]">
-                <Loader2 className="w-10 h-10 text-slate-400 animate-spin" />
-            </div>
-        );
+        return <div className="flex-1 min-h-0 flex flex-col" style={{ backgroundColor: "var(--theme-bg-page)" }}></div>;
     }
     if (error || !tree?.call) {
         return (

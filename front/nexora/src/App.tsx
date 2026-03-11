@@ -1,6 +1,5 @@
 import { lazy, Suspense } from "react"
 import { Routes, Route, Navigate } from "react-router-dom"
-import { Loader2 } from "lucide-react"
 
 import MainPage from "./pages/MainPage"
 import VerifyLinkPage from "./pages/VerifyLinkPage"
@@ -17,9 +16,7 @@ const ProfileEditPage = lazy(() => import("./pages/ProfileEditPage"))
 const TeamPage = lazy(() => import("./pages/TeamPage"))
 
 const PageLoader = () => (
-    <div className="flex h-screen w-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-    </div>
+    <div className="min-h-screen bg-background" />
 )
 
 function App() {

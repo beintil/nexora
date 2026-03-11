@@ -29,14 +29,47 @@ type Config struct {
 }
 
 type envConfig struct {
-	Env      Env `env:"ENV" env-required:"true"`
-	Postgres PostgresConfig
-	Redis    RedisConfig
-	Auth     AuthConfig
-	Storage  StorageConfig
-	EmailEnv SMSConfig
-	S3       StorageConfig
-	Sms      SMSConfig
+	Env       Env `env:"ENV" env-required:"true"`
+	Postgres  PostgresConfig
+	Redis     RedisConfig
+	Auth      AuthConfig
+	Storage   StorageConfig
+	EmailEnv  SMSConfig
+	S3        StorageConfig
+	Sms       SMSConfig
+	Payment   PaymentConfig
+	Telephony TelephonyConfig
+}
+
+type PaymentConfig struct {
+	Robokassa RobokassaConfig
+}
+
+type RobokassaConfig struct {
+	MerchantLogin string `env:"ROBOKASSA_MERCHANT_LOGIN"`
+	Password1     string `env:"ROBOKASSA_PASSWORD_1"`
+	Password2     string `env:"ROBOKASSA_PASSWORD_2"`
+	TestMode      bool   `env:"ROBOKASSA_TEST_MODE"`
+}
+
+// TelephonyConfig описывает конфигурацию телефонии и провайдеров.
+type TelephonyConfig struct {
+	// Enabled провайдеры, управляемые через переменные окружения.
+	// Примеры:
+	// TELEPHONY_TWILIO_ENABLED=true
+	// TELEPHONY_MANGO_ENABLED=true
+	// TELEPHONY_MTS_ENABLED=false
+	// TELEPHONY_ZADARMA_ENABLED=true
+	TwilioEnabled  bool `env:"TELEPHONY_TWILIO_ENABLED" env-default:"false"`
+	MangoEnabled   bool `env:"TELEPHONY_MANGO_ENABLED" env-default:"false"`
+	MTSEnabled     bool `env:"TELEPHONY_MTS_ENABLED" env-default:"false"`
+	ZadarmaEnabled bool `env:"TELEPHONY_ZADARMA_ENABLED" env-default:"false"`
+
+	// Секреты/ключи для проверки подписей вебхуков (если используются у провайдера).
+	TwilioWebhookSecret  string `env:"TELEPHONY_TWILIO_WEBHOOK_SECRET"`
+	MangoWebhookSecret   string `env:"TELEPHONY_MANGO_WEBHOOK_SECRET"`
+	MTSWebhookSecret     string `env:"TELEPHONY_MTS_WEBHOOK_SECRET"`
+	ZadarmaWebhookSecret string `env:"TELEPHONY_ZADARMA_WEBHOOK_SECRET"`
 }
 
 type jsonConfig struct {

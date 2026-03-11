@@ -181,11 +181,7 @@ export default function ProfileEditPage() {
     }
 
     if (profileLoading && !profile) {
-        return (
-            <div className="flex min-h-[40vh] flex-1 items-center justify-center bg-slate-50/50">
-                <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
-            </div>
-        )
+        return <div className="flex min-h-[40vh] flex-1 bg-[#f5f4f2]" />
     }
 
     if (!profile) {

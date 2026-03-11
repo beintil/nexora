@@ -60,78 +60,86 @@
 }
 
 :root, [data-theme="light"] {
-  --background: #fdfdfc;
-  --foreground: #1c1c1c;
-  --card: #ffffff;
-  --card-foreground: #1c1c1c;
-  --popover: #ffffff;
-  --popover-foreground: #1c1c1c;
-  --primary: #1c1c1c;
-  --primary-foreground: #ffffff;
-  --secondary: #f4f4f5;
-  --secondary-foreground: #1c1c1c;
-  --muted: #f4f4f5;
-  --muted-foreground: #71717a;
-  --accent: #f4f4f5;
-  --accent-foreground: #1c1c1c;
-  --destructive: #ef4444;
-  --destructive-foreground: #ffffff;
-  --border: #e4e4e7;
-  --input: #e4e4e7;
-  --ring: #1c1c1c;
-  --radius: 0.5rem; /* Уменьшено для строгости */
+  --background: #FAFAFA;
+  --foreground: #111827;
+  --card: #FFFFFF;
+  --card-foreground: #111827;
+  --popover: #FFFFFF;
+  --popover-foreground: #111827;
+  --primary: #111827;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F3F4F6;
+  --secondary-foreground: #374151;
+  --muted: #F3F4F6;
+  --muted-foreground: #6B7280;
+  --accent: #F3F4F6;
+  --accent-foreground: #111827;
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  --border: #E5E7EB;
+  --input: #E5E7EB;
+  --ring: #111827;
+  --radius: 0.75rem;
   
-  --sidebar-background: #fdfdfc;
-  --sidebar-foreground: #52525b;
-  --sidebar-accent: #f4f4f5;
-  --sidebar-accent-foreground: #1c1c1c;
-  --sidebar-border: #e4e4e7;
+  --sidebar-background: #FAFAFA;
+  --sidebar-foreground: #6B7280;
+  --sidebar-accent: #E5E7EB;
+  --sidebar-accent-foreground: #111827;
+  --sidebar-border: #E5E7EB;
 }
 
 .dark, [data-theme="dark"] {
-  --background: #09090b;
-  --foreground: #ededed;
-  --card: #09090b;
-  --card-foreground: #ededed;
-  --popover: #09090b;
-  --popover-foreground: #ededed;
-  --primary: #ededed;
-  --primary-foreground: #09090b;
-  --secondary: #27272a;
-  --secondary-foreground: #ededed;
-  --muted: #18181b;
-  --muted-foreground: #a1a1aa;
-  --accent: #18181b;
-  --accent-foreground: #ededed;
-  --destructive: #7f1d1d;
-  --destructive-foreground: #ededed;
-  --border: #27272a;
-  --input: #27272a;
-  --ring: #d4d4d8;
+  --background: #0A0A0A;
+  --foreground: #FAFAFA;
+  --card: #0A0A0A;
+  --card-foreground: #FAFAFA;
+  --popover: #0A0A0A;
+  --popover-foreground: #FAFAFA;
+  --primary: #FAFAFA;
+  --primary-foreground: #0A0A0A;
+  --secondary: #171717;
+  --secondary-foreground: #A1A1AA;
+  --muted: #171717;
+  --muted-foreground: #A1A1AA;
+  --accent: #262626;
+  --accent-foreground: #FAFAFA;
+  --destructive: #7F1D1D;
+  --destructive-foreground: #FAFAFA;
+  --border: #262626;
+  --input: #262626;
+  --ring: #D4D4D8;
   
-  --sidebar-background: #09090b;
-  --sidebar-foreground: #a1a1aa;
-  --sidebar-accent: #18181b;
-  --sidebar-accent-foreground: #ededed;
-  --sidebar-border: #27272a;
+  --sidebar-background: #0A0A0A;
+  --sidebar-foreground: #A1A1AA;
+  --sidebar-accent: #262626;
+  --sidebar-accent-foreground: #FAFAFA;
+  --sidebar-border: #262626;
 }
 
 * {
   @apply border-border outline-ring/50;
 }
 body {
-  @apply bg-background text-foreground;
+  @apply bg-background text-foreground antialiased;
   font-feature-settings: "rlig" 1, "calt" 1;
 }
 
-/* Custom Utilities for Glass and Premium feel */
+/* Base custom utilities */
 .glass {
-  @apply bg-background/80 backdrop-blur-md border-b border-border;
+  @apply bg-white/70 dark:bg-black/60 backdrop-blur-xl border-b border-white/20 dark:border-white/5;
 }
 
-.shadow-premium {
-  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); /* Убрали сильные тени, оставили легкий depth */
+@utility shadow-premium {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.02);
+  .dark & {
+    box-shadow: 0 1px 2px rgba(0,0,0,0.8), 0 4px 12px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
+  }
 }
-.dark .shadow-premium {
-  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.4), inset 0 1px 0 0 rgba(255, 255, 255, 0.02);
+
+.card-solid {
+  @apply bg-card text-card-foreground rounded-2xl border border-border/80 relative overflow-hidden shadow-premium;
+}
+
+.hover-lift {
+  @apply transition-transform duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg;
 }

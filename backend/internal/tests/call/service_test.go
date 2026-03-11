@@ -51,156 +51,6 @@ func newCallTreeNode(direction domain.CallDirection, events []*domain.CallEvent)
 }
 
 func TestService_CallWorkerBaseCreateSuccess(t *testing.T) {
-	telephonyTestID := "4591441d-c0a8-409f-9658-eab5459a0b81"
-
-	var tests = map[string]struct {
-		CallTree *domain.CallTree
-	}{
-		"create_call_success_with_childes_1_lvl": {
-			CallTree: func() *domain.CallTree {
-				// Родительский звонок
-				root := newCallTreeNode(
-					domain.CallDirectionInbound,
-					[]*domain.CallEvent{
-						{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
-						{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
-						{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
-						{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
-					},
-				)
-
-				root.Children = []*domain.CallTree{
-					newCallTreeNode(
-						domain.CallDirectionInbound,
-						[]*domain.CallEvent{
-							{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
-							{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
-							{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
-							{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
-						},
-					),
-					newCallTreeNode(
-						domain.CallDirectionInbound,
-						[]*domain.CallEvent{
-							{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
-							{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
-							{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
-							{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
-						},
-					),
-					newCallTreeNode(
-						domain.CallDirectionInbound,
-						[]*domain.CallEvent{
-							{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
-							{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
-							{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
-							{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
-						},
-					),
-				}
-				return root
-			}(),
-		},
-		"create_call_success_with_childes_2_lvl": {
-			CallTree: func() *domain.CallTree {
-				root := newCallTreeNode(
-					domain.CallDirectionInbound,
-					[]*domain.CallEvent{
-						{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
-						{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
-						{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
-						{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
-					},
-				)
-
-				childA := newCallTreeNode(
-					domain.CallDirectionInbound,
-					[]*domain.CallEvent{
-						{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
-						{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
-						{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
-						{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
-					},
-				)
-				childB := newCallTreeNode(
-					domain.CallDirectionInbound,
-					[]*domain.CallEvent{
-						{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
-						{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
-						{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
-						{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
-					},
-				)
-				childC := newCallTreeNode(
-					domain.CallDirectionInbound,
-					[]*domain.CallEvent{
-						{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
-						{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
-						{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
-						{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
-					},
-				)
-
-				childA.Children = []*domain.CallTree{
-					newCallTreeNode(
-						domain.CallDirectionInbound,
-						[]*domain.CallEvent{
-							{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
-							{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
-							{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
-							{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
-						},
-					),
-					newCallTreeNode(
-						domain.CallDirectionInbound,
-						[]*domain.CallEvent{
-							{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
-							{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
-							{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
-							{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
-						},
-					),
-				}
-				childB.Children = []*domain.CallTree{
-					newCallTreeNode(
-						domain.CallDirectionInbound,
-						[]*domain.CallEvent{
-							{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
-							{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
-							{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
-							{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
-						},
-					),
-				}
-				root.Children = []*domain.CallTree{childA, childB, childC}
-				return root
-			}(),
-		},
-		"create_call_success_one_call_with_completed": {
-			CallTree: newCallTreeNode(
-				domain.CallDirectionInbound,
-				[]*domain.CallEvent{
-					{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
-					{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
-					{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
-					{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
-				},
-			),
-		},
-		"create_call_success_one_call_with_double_event": {
-			CallTree: newCallTreeNode(
-				domain.CallDirectionInbound,
-				[]*domain.CallEvent{
-					{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
-					{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
-					{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
-					{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
-					{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
-				},
-			),
-		},
-	}
-
 	var ctx = context.Background()
 
 	log, err := logger.NewLogger()
@@ -211,6 +61,10 @@ func TestService_CallWorkerBaseCreateSuccess(t *testing.T) {
 
 	os.Setenv("TEST", "true")
 	os.Setenv("CONFIG_PATH", "/Users/darkness/nexora/backend/configs/local.json")
+	os.Setenv("ROBOKASSA_MERCHANT_LOGIN", "test")
+	os.Setenv("ROBOKASSA_PASSWORD_1", "test")
+	os.Setenv("ROBOKASSA_PASSWORD_2", "test")
+	os.Setenv("ROBOKASSA_TEST_MODE", "true")
 
 	cfg := config.MustConfig(log)
 
@@ -240,56 +94,209 @@ func TestService_CallWorkerBaseCreateSuccess(t *testing.T) {
 	companyService := company.NewService(callService, companyRepos, transaction)
 	telephonyIngestionPipelineService := telephony_ingestion_pipeline.NewService(countriesService, callService, companyService, planService, transaction)
 
-	for name, variableTest := range tests {
-		t.Logf("running test: %s", name)
+	for i := 0; i < 50000; i++ {
 
-		var createTree func(node *domain.CallTree, parent *domain.CallTree)
-		createTree = func(node *domain.CallTree, parent *domain.CallTree) {
-			if node == nil || node.Call == nil {
-				return
-			}
+		telephonyTestID := "9d7817f3-f911-4a6f-b951-d755d33a90e4"
 
-			if parent != nil && parent.Call != nil {
-				node.Call.ExternalParentCallID = parent.Call.ExternalCallID
-			}
+		var tests = map[string]struct {
+			CallTree *domain.CallTree
+		}{
+			"create_call_success_with_childes_1_lvl": {
+				CallTree: func() *domain.CallTree {
+					// Родительский звонок
+					root := newCallTreeNode(
+						domain.CallDirectionInbound,
+						[]*domain.CallEvent{
+							{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
+							{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
+							{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
+							{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
+						},
+					)
 
-			events := node.Call.Events
-			if len(events) == 0 {
-				t.Errorf("test failed: empty events for call %s", node.Call.ExternalCallID)
-				return
-			}
+					root.Children = []*domain.CallTree{
+						newCallTreeNode(
+							domain.CallDirectionInbound,
+							[]*domain.CallEvent{
+								{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
+								{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
+								{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
+								{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
+							},
+						),
+						newCallTreeNode(
+							domain.CallDirectionInbound,
+							[]*domain.CallEvent{
+								{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
+								{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
+								{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
+								{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
+							},
+						),
+						newCallTreeNode(
+							domain.CallDirectionInbound,
+							[]*domain.CallEvent{
+								{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
+								{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
+								{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
+								{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
+							},
+						),
+					}
+					return root
+				}(),
+			},
+			"create_call_success_with_childes_2_lvl": {
+				CallTree: func() *domain.CallTree {
+					root := newCallTreeNode(
+						domain.CallDirectionInbound,
+						[]*domain.CallEvent{
+							{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
+							{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
+							{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
+							{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
+						},
+					)
 
-			worker := &domain.CallWorker{
-				Call:               node.Call,
-				TelephonyAccountID: telephonyTestID,
-			}
+					childA := newCallTreeNode(
+						domain.CallDirectionInbound,
+						[]*domain.CallEvent{
+							{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
+							{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
+							{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
+							{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
+						},
+					)
+					childB := newCallTreeNode(
+						domain.CallDirectionInbound,
+						[]*domain.CallEvent{
+							{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
+							{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
+							{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
+							{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
+						},
+					)
+					childC := newCallTreeNode(
+						domain.CallDirectionInbound,
+						[]*domain.CallEvent{
+							{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
+							{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
+							{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
+							{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
+						},
+					)
 
-			worker.Event = events[0]
-			sErr := telephonyIngestionPipelineService.CallWorker(ctx, worker, domain.Twilio)
-			if sErr != nil {
-				t.Errorf("test failed: %s", sErr.Error())
-				return
-			}
+					childA.Children = []*domain.CallTree{
+						newCallTreeNode(
+							domain.CallDirectionInbound,
+							[]*domain.CallEvent{
+								{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
+								{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
+								{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
+								{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
+							},
+						),
+						newCallTreeNode(
+							domain.CallDirectionInbound,
+							[]*domain.CallEvent{
+								{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
+								{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
+								{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
+								{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
+							},
+						),
+					}
+					childB.Children = []*domain.CallTree{
+						newCallTreeNode(
+							domain.CallDirectionInbound,
+							[]*domain.CallEvent{
+								{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
+								{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
+								{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
+								{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
+							},
+						),
+					}
+					root.Children = []*domain.CallTree{childA, childB, childC}
+					return root
+				}(),
+			},
+			"create_call_success_one_call_with_completed": {
+				CallTree: newCallTreeNode(
+					domain.CallDirectionInbound,
+					[]*domain.CallEvent{
+						{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
+						{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
+						{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
+						{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
+					},
+				),
+			},
+			"create_call_success_one_call_with_double_event": {
+				CallTree: newCallTreeNode(
+					domain.CallDirectionInbound,
+					[]*domain.CallEvent{
+						{Status: domain.CallEventStatusInitiated, Timestamp: time.Now().UTC()},
+						{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
+						{Status: domain.CallEventStatusRinging, Timestamp: time.Now().UTC()},
+						{Status: domain.CallEventStatusInProgress, Timestamp: time.Now().UTC()},
+						{Status: domain.CallEventStatusCompleted, Timestamp: time.Now().UTC()},
+					},
+				),
+			},
+		}
 
-			for _, event := range events[1:] {
-				worker.Event = event
-				sErr = telephonyIngestionPipelineService.CallWorker(ctx, worker, domain.Twilio)
+		for name, variableTest := range tests {
+			t.Logf("running test: %s", name)
+
+			var createTree func(node *domain.CallTree, parent *domain.CallTree)
+			createTree = func(node *domain.CallTree, parent *domain.CallTree) {
+				if node == nil || node.Call == nil {
+					return
+				}
+
+				if parent != nil && parent.Call != nil {
+					node.Call.ExternalParentCallID = parent.Call.ExternalCallID
+				}
+
+				events := node.Call.Events
+				if len(events) == 0 {
+					t.Errorf("test failed: empty events for call %s", node.Call.ExternalCallID)
+					return
+				}
+
+				worker := &domain.CallWorker{
+					Call:               node.Call,
+					TelephonyAccountID: telephonyTestID,
+				}
+
+				worker.Event = events[0]
+				sErr := telephonyIngestionPipelineService.CallWorker(ctx, worker, domain.Twilio)
 				if sErr != nil {
 					t.Errorf("test failed: %s", sErr.Error())
 					return
 				}
+
+				for _, event := range events[1:] {
+					worker.Event = event
+					sErr = telephonyIngestionPipelineService.CallWorker(ctx, worker, domain.Twilio)
+					if sErr != nil {
+						t.Errorf("test failed: %s", sErr.Error())
+						return
+					}
+				}
+
+				for _, child := range node.Children {
+					createTree(child, node)
+				}
 			}
 
-			for _, child := range node.Children {
-				createTree(child, node)
-			}
+			createTree(variableTest.CallTree, nil)
+
+			//checkCallTree(t, ctx, callService, transaction, variableTest.CallTree)
+
+			t.Logf("test finished: %s \n", name)
 		}
-
-		createTree(variableTest.CallTree, nil)
-
-		checkCallTree(t, ctx, callService, transaction, variableTest.CallTree)
-
-		t.Logf("test finished: %s \n", name)
 	}
 }
 

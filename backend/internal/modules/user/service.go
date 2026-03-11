@@ -10,7 +10,9 @@ import (
 	"telephony/internal/modules/company"
 	"telephony/internal/shared/database/postgres"
 	srverr "telephony/internal/shared/server_error"
+	"telephony/pkg/client/email_sender"
 	"telephony/pkg/client/yandexstorage"
+	"telephony/pkg/password"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -29,6 +31,7 @@ type service struct {
 	companyService company.Service
 	transaction    postgres.Transaction
 	s3Storage      yandexstorage.Client
+	emailSender    email_sender.Sender
 	avatarPrefix   string
 }
 
@@ -37,6 +40,7 @@ func NewService(
 	companyService company.Service,
 	transaction postgres.Transaction,
 	s3Storage yandexstorage.Client,
+	emailSender email_sender.Sender,
 	avatarPrefix string,
 ) Service {
 	return &service{
@@ -44,6 +48,7 @@ func NewService(
 		companyService: companyService,
 		transaction:    transaction,
 		s3Storage:      s3Storage,
+		emailSender:    emailSender,
 		avatarPrefix:   avatarPrefix,
 	}
 }
@@ -293,15 +298,7 @@ func (s *service) GetCompanyUsers(ctx context.Context, companyID uuid.UUID) ([]*
 		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "user.GetCompanyUsers/repo").SetError(err.Error())
 	}
 
-	// Фильтруем админские роли для обычных запросов
-	filtered := make([]*domain.User, 0, len(users))
-	for _, u := range users {
-		if u.RoleID != domain.RoleAdmin && u.RoleID != domain.RoleSupport {
-			filtered = append(filtered, u)
-		}
-	}
-
-	return filtered, nil
+	return users, nil
 }
 
 func (s *service) DeleteUser(ctx context.Context, userID uuid.UUID) srverr.ServerError {
@@ -337,6 +334,8 @@ func (s *service) CreateStaff(ctx context.Context, companyID uuid.UUID, email, f
 	if err == nil && existing != nil {
 		return nil, srverr.NewServerError(ServiceErrorUserAlreadyExists, "user.CreateStaff/check_exists")
 	}
+	pass := password.GeneratePassword()
+	hashPassword, err := password.HashPassword(pass)
 
 	u := &domain.User{
 		ID:                   uuid.New(),
@@ -345,12 +344,22 @@ func (s *service) CreateStaff(ctx context.Context, companyID uuid.UUID, email, f
 		Email:                &email,
 		FullName:             &fullName,
 		VerifiedRegistration: true, // Персонал верифицирован админом
+		PasswordHash:         hashPassword,
 	}
 
-	if err := s.repo.createUser(ctx, tx, u); err != nil {
-		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "user.CreateStaff/create").SetError(err.Error())
+	if err := s.CreateUserWithTx(ctx, tx, u); err != nil {
+		return nil, err
 	}
 
+	err = s.emailSender.Send(ctx, email_sender.Message{
+		To:      email,
+		Subject: "Welcome to the company!",
+		HTML:    "Welcome to the company! Your password is: " + pass,
+		Text:    "Welcome to the company! Your password is: " + pass,
+	})
+	if err != nil {
+		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "user.CreateStaff/send_email").SetError(err.Error())
+	}
 	if err := s.transaction.Commit(ctx, tx); err != nil {
 		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "user.CreateStaff/commit").SetError(err.Error())
 	}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ChevronDown, ChevronRight, Calendar, SlidersHorizontal, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Calendar, SlidersHorizontal, Search, ArrowUpRight, ArrowDownLeft } from "lucide-react";
 import type {
   CallsListItem,
   CallTreeResponse,
@@ -12,22 +12,9 @@ import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCallsList } from "../hooks/useCallsList";
 import { useTelephony } from "../hooks/useTelephony";
+import { cn } from "@/lib/utils";
 
 const PAGE_LIMIT = 20;
-
-const STATUS_LABELS: Record<string, string> = {
-  "": "—",
-  call_event_status_queued: "В очереди",
-  call_event_status_initiated: "Инициирован",
-  call_event_status_ringing: "Звонит",
-  call_event_status_in_progress: "В разговоре",
-  call_event_status_completed: "Завершён",
-  call_event_status_busy: "Занято",
-  call_event_status_failed: "Ошибка",
-  call_event_status_no_answer: "Нет ответа",
-  call_event_status_canceled: "Отменён",
-  call_event_status_timeout: "Таймаут",
-};
 
 const DIRECTION_LABELS: Record<CallDirection, string> = {
   call_direction_inbound: "Входящий",
@@ -35,29 +22,32 @@ const DIRECTION_LABELS: Record<CallDirection, string> = {
   call_direction_outbound_dial: "Исходящий",
 };
 
-const DIRECTION_ROW_ACCENT: Record<string, string> = {
-  call_direction_inbound: "border-l-emerald-500",
-  call_direction_outbound_api: "border-l-blue-500",
-  call_direction_outbound_dial: "border-l-violet-500",
-};
-
-const DIRECTION_BADGE_CLASS: Record<string, string> = {
-  call_direction_inbound: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20",
-  call_direction_outbound_api: "bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/20",
-  call_direction_outbound_dial: "bg-violet-500/15 text-violet-700 dark:text-violet-400 border border-violet-500/20",
-};
-
-const STATUS_BADGE_CLASS: Record<string, string> = {
-  call_event_status_completed: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/20",
-  call_event_status_in_progress: "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/20",
-  call_event_status_ringing: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/20",
-  call_event_status_initiated: "bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-500/20",
-  call_event_status_no_answer: "bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/20",
-  call_event_status_busy: "bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-500/20",
-  call_event_status_failed: "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/20",
-  call_event_status_canceled: "bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/20",
-  call_event_status_timeout: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/20",
-  call_event_status_queued: "bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/20",
+const getStatusConfig = (status: string | undefined) => {
+    switch (status) {
+      case "call_event_status_completed":
+        return { label: "Завершён", colorClass: "text-emerald-700 dark:text-emerald-400 bg-emerald-500/15 border-emerald-500/20", dotClass: "bg-emerald-500" };
+      case "call_event_status_no_answer":
+        return { label: "Нет ответа", colorClass: "text-red-700 dark:text-red-400 bg-red-500/15 border-red-500/20", dotClass: "bg-red-500" };
+      case "call_event_status_canceled":
+        return { label: "Отменён", colorClass: "text-slate-600 dark:text-slate-400 bg-slate-500/15 border-slate-500/20", dotClass: "bg-slate-500" };
+      case "call_event_status_busy":
+        return { label: "Занято", colorClass: "text-amber-700 dark:text-amber-400 bg-amber-500/15 border-amber-500/20", dotClass: "bg-amber-500" };
+      case "call_event_status_failed":
+        return { label: "Ошибка", colorClass: "text-red-700 dark:text-red-400 bg-red-500/15 border-red-500/20", dotClass: "bg-red-700" };
+      case "call_event_status_in_progress":
+        return { label: "В разговоре", colorClass: "text-blue-700 dark:text-blue-400 bg-blue-500/15 border-blue-500/20", dotClass: "bg-blue-500" };
+      case "call_event_status_ringing":
+        return { label: "Звонит", colorClass: "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/20", dotClass: "bg-blue-400 animate-pulse" };
+      case "call_event_status_queued":
+        return { label: "В очереди", colorClass: "text-amber-700 dark:text-amber-400 bg-amber-500/15 border-amber-500/20", dotClass: "bg-amber-400" };
+      case "call_event_status_timeout":
+        return { label: "Таймаут", colorClass: "text-red-700 dark:text-red-400 bg-red-500/15 border-red-500/20", dotClass: "bg-red-500" };
+      case "call_event_status_initiated":
+        return { label: "Инициирован", colorClass: "text-slate-700 dark:text-slate-300 bg-slate-500/15 border-slate-500/20", dotClass: "bg-slate-500" };
+      default:
+        const clean = status ? status.replace("call_event_status_", "").replace("_", " ") : "Неизвестно";
+        return { label: clean, colorClass: "text-slate-600 dark:text-slate-400 bg-slate-500/10 border-slate-500/20", dotClass: "bg-slate-500" };
+    }
 };
 
 interface CallsPageLocationState {
@@ -214,7 +204,7 @@ export default function CallsPage() {
             <Button
                 variant="outline"
                 size="sm"
-                className="h-8 bg-secondary/30 text-xs font-medium border-border"
+                className="h-9 bg-secondary/30 text-xs font-semibold border-border/60 hover:bg-secondary/60 hover:text-foreground transition-all shadow-sm"
                 onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                     e.stopPropagation();
                     setPeriodOpen((v) => !v);
@@ -288,7 +278,7 @@ export default function CallsPage() {
             <Button
                 variant="outline"
                 size="sm"
-                className="h-8 bg-secondary/30 text-xs font-medium border-border"
+                className="h-9 bg-secondary/30 text-xs font-semibold border-border/60 hover:bg-secondary/60 hover:text-foreground transition-all shadow-sm"
                 onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                     e.stopPropagation();
                     setFiltersOpen((v) => !v);
@@ -386,155 +376,192 @@ export default function CallsPage() {
       </div>
       </div>
 
-      <div className="flex-1 flex flex-col border border-border rounded-md bg-card overflow-hidden min-h-0">
+      <div className="flex-1 flex flex-col min-h-0 bg-transparent">
         {loading && (
-          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
-            <div className="size-6 rounded-full border-2 border-primary border-r-transparent animate-spin mb-3" />
-            <p className="text-xs">Loading calls...</p>
+          <div className="flex-1 bg-transparent">
           </div>
         )}
         
         {error && (
-          <div className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4 bg-destructive/10 text-destructive text-sm">
+          <div className="p-4 rounded-xl mb-4 flex flex-col sm:flex-row items-center justify-between gap-4 bg-destructive/10 text-destructive text-sm border border-destructive/20 shadow-sm">
             <span className="font-medium">{error}</span>
             <Button variant="destructive" size="sm" className="h-8" onClick={() => refetch()}>Retry</Button>
           </div>
         )}
         
         {!loading && data && data.items.length === 0 && (
-          <div className="flex-1 flex flex-col items-center justify-center text-center p-12">
-            <div className="flex size-12 items-center justify-center rounded-full bg-secondary text-muted-foreground mb-3">
-               <Search className="size-5" />
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-12 bg-card rounded-2xl border border-border/40 shadow-sm">
+            <div className="flex size-14 items-center justify-center rounded-full bg-secondary text-muted-foreground/60 mb-4 shadow-sm border border-border/40">
+               <Search className="size-6" />
             </div>
-            <h3 className="text-sm font-semibold text-foreground mb-1">No calls found</h3>
-            <p className="text-[11px] text-muted-foreground">Try adjusting your filters or date range.</p>
+            <h3 className="text-base font-bold text-foreground mb-1">No calls found</h3>
+            <p className="text-sm font-medium text-muted-foreground">Try adjusting your filters or date range.</p>
           </div>
         )}
         
         {!loading && data && data.items.length > 0 && (
-          <div className="flex-1 overflow-auto">
-            <table className="w-full min-w-[800px] text-[11px] text-left align-middle border-collapse">
-              <thead className="sticky top-0 z-10 bg-secondary/80 backdrop-blur-sm shadow-sm ring-1 ring-border/50">
-                <tr className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">
-                  <th className="py-2 pl-4 pr-3 w-[260px] font-medium">Call ID</th>
-                  <th className="py-2 px-3 font-medium">Date & Time</th>
-                  <th className="py-2 px-3 font-medium">Direction</th>
-                  <th className="py-2 px-3 font-medium">Telephony</th>
-                  <th className="py-2 px-3 font-medium">From</th>
-                  <th className="py-2 px-3 font-medium">To</th>
-                  <th className="py-2 px-4 font-medium text-right">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/40 text-foreground">
-                {callRows.map((row) => {
-                  const c = row.listItem ?? row.treeNode!.call;
-                  if (!c) return null;
-                  const created = c.created_at ? new Date(c.created_at) : null;
-                  const lastStatus = row.listItem
-                    ? row.listItem.last_status
-                    : row.treeNode!.call?.events?.length
-                      ? row.treeNode!.call.events[row.treeNode!.call.events.length - 1].status
-                      : "";
-                  const dirAccent = DIRECTION_ROW_ACCENT[c.direction ?? ""] ?? "border-l-transparent";
-                  const statusClass = STATUS_BADGE_CLASS[lastStatus ?? ""] ?? "bg-slate-500/10 text-slate-600 border border-slate-500/20";
-                  const hasChildren =
-                    row.depth === 0
-                      ? Boolean(row.listItem?.has_children)
-                      : (row.treeNode?.children?.length ?? 0) > 0;
-                  const isExpanded = expandedIds.has(row.id);
-                  const isTreeLoading = loadingTreeId === row.id;
-                  const indentPx = Math.max(0, row.depth * 28);
-                  const isRoot = row.depth === 0;
+          <div className="flex-1 overflow-auto rounded-xl">
+             <div className="flex flex-col gap-2 min-w-[800px] pb-4">
+                
+                {/* List Header */}
+                <div className="sticky top-0 z-10 flex bg-background/95 backdrop-blur-sm px-6 py-3 border-b border-border/40 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                   <div className="w-[140px] shrink-0">Статус</div>
+                   <div className="w-[180px] shrink-0">Контакт</div>
+                   <div className="w-[140px] shrink-0">Направление</div>
+                   <div className="flex-1">Дата и Время</div>
+                   <div className="w-[120px] shrink-0 text-right">Провайдер</div>
+                   <div className="w-[60px] shrink-0"></div>
+                </div>
 
-                  return (
-                    <tr
-                      key={row.id}
-                      className={`
-                        group cursor-pointer transition-colors
-                        ${isRoot ? "bg-background hover:bg-secondary/40" : "bg-secondary/20 hover:bg-secondary/60"}
-                      `}
-                      onClick={() => navigate(`/calls/${row.id}`)}
-                    >
-                      <td className="py-1.5 pl-4 pr-3">
-                        <div className="flex items-center" style={{ paddingLeft: indentPx }}>
-                          <div className={`w-0.5 h-6 rounded-full ${dirAccent.replace('border-l-', 'bg-')} mr-2 shrink-0 opacity-70 group-hover:opacity-100 transition-opacity`} />
-                           
-                          <button
-                            type="button"
-                            className={`flex size-5 items-center justify-center rounded shrink-0 transition-colors mr-1.5 ${
-                              hasChildren 
-                                ? "bg-primary/10 text-primary hover:bg-primary/20" 
-                                : "text-muted-foreground opacity-30"
-                            }`}
-                            disabled={isTreeLoading}
-                            aria-label={isExpanded ? "Collapse" : "Expand"}
-                            onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
-                              e.stopPropagation();
-                              if (row.depth === 0 || treeByCallId[row.id] != null) {
-                                toggleExpand(row.id);
-                              } else if (row.treeNode?.children?.length) {
-                                toggleExpand(row.id);
-                              }
-                            }}
-                          >
-                            {isTreeLoading ? (
-                              <div className="size-2 animate-pulse bg-current rounded-full" />
-                            ) : isExpanded ? (
-                              <ChevronDown className="size-3" />
-                            ) : (
-                              <ChevronRight className="size-3" />
-                            )}
-                          </button>
+                {/* Rows Space */}
+                <div className="flex flex-col gap-2 px-1">
+                    {callRows.map((row) => {
+                    const c = row.listItem ?? row.treeNode!.call;
+                    if (!c) return null;
+                    const created = c.created_at ? new Date(c.created_at) : null;
+                    const lastStatus = row.listItem
+                        ? row.listItem.last_status
+                        : row.treeNode!.call?.events?.length
+                        ? row.treeNode!.call.events[row.treeNode!.call.events.length - 1].status
+                        : undefined;
+                    
+                    const isIncoming = c.direction === 'call_direction_inbound';
+                    const activeNumber = isIncoming ? c.from_number : c.to_number;
+                    const secondaryNumber = isIncoming ? c.to_number : c.from_number;
+                    const statusConf = getStatusConfig(lastStatus);
 
-                          <div className="flex flex-col min-w-0">
-                            <span className="font-mono text-[11px] font-semibold text-foreground truncate max-w-[100px]" title={row.id}>
-                                {row.id.split('-')[0]}
-                            </span>
+                    const hasChildren =
+                        row.depth === 0
+                        ? Boolean(row.listItem?.has_children)
+                        : (row.treeNode?.children?.length ?? 0) > 0;
+                    const isExpanded = expandedIds.has(row.id);
+                    const isTreeLoading = loadingTreeId === row.id;
+                    const indentPx = row.depth > 0 ? 32 + (row.depth - 1) * 24 : 0;
+                    const isRoot = row.depth === 0;
+
+                    return (
+                        <div
+                           key={row.id}
+                           onClick={() => navigate(`/calls/${row.id}`)}
+                           className={cn(
+                               "group relative flex items-center bg-card rounded-2xl px-6 py-4 cursor-pointer transition-all border shadow-sm",
+                               isRoot ? "border-border/60 hover:border-foreground/20 hover:shadow-md" : "border-border/30 bg-secondary/10 hover:bg-secondary/30",
+                               row.depth > 0 && "mt-0"
+                           )}
+                           style={{ marginLeft: indentPx }}
+                        >
+                            {/* Connector Line for Subcalls */}
                             {row.depth > 0 && (
-                                <span className="text-[9px] uppercase font-bold text-muted-foreground -mt-0.5">
-                                  subcall {row.depth}
-                                </span>
+                                <div className="absolute -left-6 top-1/2 w-4 border-t-2 border-border/40 rounded-tl-lg" />
                             )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-1.5 px-3 whitespace-nowrap text-muted-foreground">
-                        {created ? (
-                            <div className="flex flex-col">
-                                <span className="text-foreground font-medium">{created.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
-                                <span className="text-[10px] leading-tight">{created.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                            {row.depth > 0 && row.id !== callRows[callRows.length-1]?.id && (
+                                <div className="absolute -left-6 -top-6 bottom-1/2 border-l-2 border-border/40" />
+                            )}
+
+                            {/* Status Indicator */}
+                            <div className="w-[140px] shrink-0 flex items-center pr-4">
+                                <div className={cn(
+                                   "flex items-center justify-center rounded-xl font-bold uppercase tracking-wider text-[10px] px-2.5 py-1 border whitespace-nowrap",
+                                   statusConf.colorClass
+                                )}>
+                                    <div className={cn("size-1.5 rounded-full mr-1.5 shrink-0", statusConf.dotClass)} />
+                                    {statusConf.label}
+                                </div>
                             </div>
-                        ) : "—"}
-                      </td>
-                      <td className="py-1.5 px-3">
-                        <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold ${DIRECTION_BADGE_CLASS[c.direction ?? ""] ?? "bg-secondary text-secondary-foreground"}`}>
-                          {DIRECTION_LABELS[c.direction as CallDirection] ?? c.direction ?? "Unknown"}
-                        </span>
-                      </td>
-                      <td className="py-1.5 px-3 text-muted-foreground truncate max-w-[120px]">
-                        {isRoot && c.company_telephony_id
-                          ? telephonyById[c.company_telephony_id as string] ?? "—"
-                          : "—"}
-                      </td>
-                      <td className="py-1.5 px-3 font-mono text-[10px] font-medium tracking-tight bg-secondary/20">{c.from_number ?? "—"}</td>
-                      <td className="py-1.5 px-3 font-mono text-[10px] font-medium tracking-tight bg-secondary/20">{c.to_number ?? "—"}</td>
-                      <td className="py-1.5 px-4 text-right">
-                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${statusClass}`}>
-                          {(lastStatus && STATUS_LABELS[lastStatus] ? STATUS_LABELS[lastStatus] : lastStatus) || "—"}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+
+                            {/* Contact Info */}
+                            <div className="w-[180px] shrink-0 flex flex-col justify-center">
+                                <span className={cn("text-[15px] font-bold font-mono tracking-tight", isRoot ? "text-foreground" : "text-muted-foreground")}>
+                                    {activeNumber || "—"}
+                                </span>
+                                {isRoot && secondaryNumber && (
+                                   <span className="text-xs font-medium text-muted-foreground mt-0.5 max-w-[150px] truncate">
+                                      {isIncoming ? "to" : "from"} <span className="font-mono text-[11px]">{secondaryNumber}</span>
+                                   </span>
+                                )}
+                            </div>
+
+                            {/* Direction */}
+                            <div className="w-[140px] shrink-0 flex items-center pr-4">
+                                <span className={cn(
+                                    "flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-lg border whitespace-nowrap",
+                                    isIncoming ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20" : "bg-violet-500/10 text-violet-700 border-violet-500/20"
+                                )}>
+                                    {isIncoming ? <ArrowDownLeft className="size-3.5" /> : <ArrowUpRight className="size-3.5" />}
+                                    {DIRECTION_LABELS[c.direction as CallDirection] || "Неизвестно"}
+                                </span>
+                            </div>
+
+                            {/* Date & Time */}
+                            <div className="flex-1 flex flex-col justify-center">
+                                {created ? (
+                                    <>
+                                       <span className="text-sm font-semibold text-foreground/90">
+                                            {created.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                       </span>
+                                       <span className="text-xs font-medium text-muted-foreground mt-0.5">
+                                            {created.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                                       </span>
+                                    </>
+                                ) : <span className="text-muted-foreground">—</span>}
+                            </div>
+
+                            {/* Telephony */}
+                            <div className="w-[120px] shrink-0 flex flex-col justify-center items-end text-right px-4">
+                                {isRoot && c.company_telephony_id ? (
+                                    <>
+                                        <span className="text-sm font-semibold text-foreground truncate w-full">
+                                            {telephonyById[c.company_telephony_id as string] ?? "SIP Trunk"}
+                                        </span>
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mt-0.5">Provider</span>
+                                    </>
+                                ) : <span className="text-muted-foreground">—</span>}
+                            </div>
+
+                            {/* Expand / Actions */}
+                            <div className="w-[60px] shrink-0 flex items-center justify-end">
+                               {hasChildren ? (
+                                    <button
+                                        type="button"
+                                        className={cn(
+                                            "flex size-8 items-center justify-center rounded-full transition-all border shadow-sm",
+                                            isExpanded ? "bg-primary text-primary-foreground border-transparent" : "bg-background text-foreground border-border/80 hover:bg-secondary"
+                                        )}
+                                        disabled={isTreeLoading}
+                                        aria-label={isExpanded ? "Collapse" : "Expand"}
+                                        onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                                            e.stopPropagation();
+                                            if (row.depth === 0 || treeByCallId[row.id] != null) {
+                                                toggleExpand(row.id);
+                                            } else if (row.treeNode?.children?.length) {
+                                                toggleExpand(row.id);
+                                            }
+                                        }}
+                                    >
+                                        {isTreeLoading ? (
+                                            <div className="size-3 animate-pulse bg-current rounded-full" />
+                                        ) : (
+                                            <ChevronRight className={cn("size-4 transition-transform", isExpanded && "rotate-90")} />
+                                        )}
+                                    </button>
+                               ) : (
+                                   <div className="size-8 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                       <ChevronRight className="size-4 text-muted-foreground" />
+                                   </div>
+                               )}
+                            </div>
+                        </div>
+                    );
+                    })}
+                </div>
+             </div>
           </div>
         )}
       </div>
 
       {/* Pagination - Slim footer */}
       {data && data.meta.total > PAGE_LIMIT && (
-        <div className="flex items-center justify-between text-xs text-muted-foreground px-1 shrink-0">
+        <div className="flex items-center justify-between text-xs font-medium text-muted-foreground px-2 shrink-0 border-t border-border/40 pt-4 mt-2">
           <span>
             Page <strong className="text-foreground">{currentPage}</strong> of <strong className="text-foreground">{totalPages}</strong>
           </span>

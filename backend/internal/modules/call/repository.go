@@ -517,14 +517,6 @@ func (r *repositoryImpl) listCompanyCalls(ctx context.Context, tx pgx.Tx, filter
 
 	queryBuilder := &strings.Builder{}
 	queryBuilder.WriteString(`
-WITH last_events AS (
-  SELECT DISTINCT ON (ce.call_id)
-    ce.call_id,
-    ce.status,
-    ce.timestamp
-  FROM call_events ce
-  ORDER BY ce.call_id, ce.timestamp DESC, ce.id DESC
-)
 SELECT
   c.id,
   c.company_telephony_id,
@@ -538,7 +530,13 @@ SELECT
   EXISTS (SELECT 1 FROM call c2 WHERE c2.parent_call_id = c.id) AS has_children
 FROM call c
 JOIN company_telephony ct ON ct.id = c.company_telephony_id
-LEFT JOIN last_events le ON le.call_id = c.id
+LEFT JOIN LATERAL (
+  SELECT status
+  FROM call_events ce
+  WHERE ce.call_id = c.id
+  ORDER BY ce.timestamp DESC, ce.id DESC
+  LIMIT 1
+) le ON true
 `)
 
 	if len(conditions) > 0 {
@@ -598,20 +596,19 @@ LEFT JOIN last_events le ON le.call_id = c.id
 
 func (r *repositoryImpl) getCallMetrics(ctx context.Context, tx pgx.Tx, companyID uuid.UUID, from, to time.Time, answered domain.CallEventStatus, missed []domain.CallEventStatus) (*domain.CallMetrics, error) {
 	const summaryQuery = `
-WITH last_events AS (
-  SELECT DISTINCT ON (ce.call_id)
-    ce.call_id,
-    ce.status
-  FROM call_events ce
-  ORDER BY ce.call_id, ce.timestamp DESC, ce.id DESC
-)
 SELECT
   COUNT(*) AS total,
   COUNT(*) FILTER (WHERE le.status = $4) AS answered,
   COUNT(*) FILTER (WHERE le.status = ANY($5)) AS missed
 FROM call c
 JOIN company_telephony ct ON ct.id = c.company_telephony_id
-LEFT JOIN last_events le ON le.call_id = c.id
+LEFT JOIN LATERAL (
+  SELECT status
+  FROM call_events ce
+  WHERE ce.call_id = c.id
+  ORDER BY ce.timestamp DESC, ce.id DESC
+  LIMIT 1
+) le ON true
 WHERE ct.company_id = $1
   AND c.created_at >= $2
   AND c.created_at <= $3
@@ -665,14 +662,7 @@ GROUP BY c.direction
 
 func (r *repositoryImpl) getCallMetricsTimeseries(ctx context.Context, tx pgx.Tx, companyID uuid.UUID, from, to time.Time, answered domain.CallEventStatus, missed []domain.CallEventStatus) (*domain.CallMetricsTimeseries, error) {
 	const query = `
-WITH last_events AS (
-  SELECT DISTINCT ON (ce.call_id)
-    ce.call_id,
-    ce.status
-  FROM call_events ce
-  ORDER BY ce.call_id, ce.timestamp DESC, ce.id DESC
-),
-day_agg AS (
+WITH day_agg AS (
   SELECT
     date_trunc('day', c.created_at) AS day,
     COUNT(*) AS total,
@@ -680,7 +670,13 @@ day_agg AS (
     COUNT(*) FILTER (WHERE le.status = ANY($5)) AS missed
   FROM call c
   JOIN company_telephony ct ON ct.id = c.company_telephony_id
-  LEFT JOIN last_events le ON le.call_id = c.id
+  LEFT JOIN LATERAL (
+    SELECT status
+    FROM call_events ce
+    WHERE ce.call_id = c.id
+    ORDER BY ce.timestamp DESC, ce.id DESC
+    LIMIT 1
+  ) le ON true
   WHERE ct.company_id = $1
     AND c.created_at >= $2
     AND c.created_at <= $3

@@ -104,101 +104,73 @@ export default function TeamPage() {
                 )}
 
                 {loading ? (
-                    <div className="flex h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/20">
-                        <Loader2 className="size-10 animate-spin text-primary/40" />
-                        <p className="mt-4 text-sm text-muted-foreground">Загрузка списка команды...</p>
+                    <div className="flex h-64 rounded-2xl bg-transparent">
                     </div>
                 ) : (
-                    <motion.div 
-                        variants={{
-                            hidden: { opacity: 0 },
-                            show: {
-                                opacity: 1,
-                                transition: {
-                                    staggerChildren: 0.05
-                                }
-                            }
-                        }}
-                        initial="hidden"
-                        animate="show"
-                        className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
-                    >
-                        <AnimatePresence mode="popLayout">
-                            {filteredMembers.map((member) => (
-                                <motion.div
-                                    key={member.id}
-                                    layout
-                                    variants={{
-                                        hidden: { opacity: 0, y: 20, scale: 0.95 },
-                                        show: { 
-                                            opacity: 1, 
-                                            y: 0, 
-                                            scale: 1,
-                                            transition: { type: "spring", stiffness: 300, damping: 30 }
-                                        }
-                                    }}
-                                    initial="hidden"
-                                    animate="show"
-                                    exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }}
-                                    className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card p-5 transition-all hover:shadow-xl hover:shadow-primary/5 hover:border-primary/20"
-                                >
-                                    <div className="flex items-start justify-between">
-                                        <div className="size-12 rounded-2xl bg-gradient-to-br from-primary/20 to-secondary/20 p-0.5 shadow-inner">
-                                            <div className="flex size-full items-center justify-center rounded-xl bg-card">
-                                                {member.avatar_url ? (
-                                                    <img src={member.avatar_url} alt="" className="size-full rounded-xl object-cover" />
-                                                ) : (
-                                                    <span className="text-xl font-bold text-primary/40">
-                                                        {(member.full_name || member.email || "U")[0].toUpperCase()}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div className={cn(
-                                            "rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider",
-                                            member.role_id === 2 ? "bg-red-500/10 text-red-500" :
-                                            member.role_id === 0 ? "bg-blue-500/10 text-blue-500" :
-                                            "bg-indigo-500/10 text-indigo-500"
-                                        )}>
-                                            {roleLabel(member.role_id)}
+                    <div className="flex flex-col gap-3">
+                        {filteredMembers.map((member) => (
+                            <div
+                                key={member.id}
+                                className="group relative flex items-center justify-between gap-4 overflow-hidden rounded-xl border border-border/50 bg-card p-4 shadow-sm transition-all hover:border-border hover:shadow-md"
+                            >
+                                <div className="flex items-center gap-4 min-w-0 flex-1">
+                                    <div className="size-12 shrink-0 rounded-full bg-gradient-to-br from-primary/10 to-secondary/10 p-0.5 shadow-sm">
+                                        <div className="flex size-full flex-col items-center justify-center rounded-full bg-card overflow-hidden">
+                                            {member.avatar_url ? (
+                                                <img src={member.avatar_url} alt="" className="size-full object-cover" />
+                                            ) : (
+                                                <span className="text-lg font-bold text-primary/40 uppercase">
+                                                    {(member.full_name || member.email || "U")[0]}
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
-
-                                    <div className="mt-4 flex-1">
-                                        <h3 className="font-bold text-foreground truncate">{member.full_name || "Без имени"}</h3>
+                                    <div className="flex flex-col min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <h3 className="font-semibold text-foreground truncate">{member.full_name || "Без имени"}</h3>
+                                            <div className={cn(
+                                                "rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+                                                member.role_id === 2 ? "bg-red-500/10 text-red-500" :
+                                                member.role_id === 0 ? "bg-blue-500/10 text-blue-500" :
+                                                "bg-indigo-500/10 text-indigo-500"
+                                            )}>
+                                                {roleLabel(member.role_id)}
+                                            </div>
+                                        </div>
                                         <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
                                             <Mail className="size-3" />
                                             <span className="truncate">{member.email}</span>
+                                            <span className="mx-1.5 text-border">•</span>
+                                            <span className="flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-500">
+                                                <CheckCircle2 className="size-3" />
+                                                Активен
+                                            </span>
                                         </div>
                                     </div>
+                                </div>
 
-                                    <div className="mt-6 flex items-center justify-between pt-4 border-t border-border/50">
-                                        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                                            <CheckCircle2 className="size-3 text-green-500" />
-                                            Активен
-                                        </div>
-                                        {isOwner && member.id !== profile?.id && (
-                                            <button 
-                                                onClick={() => removeMember(member.id)}
-                                                className="rounded-lg p-2 text-muted-foreground hover:bg-red-500/10 hover:text-red-500 transition-colors"
-                                                title="Удалить пользователя"
-                                            >
-                                                <Trash2 className="size-4" />
-                                            </button>
-                                        )}
-                                    </div>
-                                </motion.div>
-                            ))}
-                        </AnimatePresence>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    {isOwner && member.id !== profile?.id && (
+                                        <button 
+                                            onClick={() => removeMember(member.id)}
+                                            className="rounded-lg p-2 text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-500 transition-all focus:opacity-100"
+                                            title="Удалить пользователя"
+                                        >
+                                            <Trash2 className="size-4" />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
 
                         {filteredMembers.length === 0 && searchQuery && (
-                            <div className="col-span-full flex flex-col items-center justify-center py-20 text-center">
-                                <Search className="mb-4 size-12 text-muted-foreground/20" />
-                                <h3 className="text-lg font-semibold">Участники не найдены</h3>
+                            <div className="flex flex-col items-center justify-center py-16 text-center">
+                                <Search className="mb-4 size-10 text-muted-foreground/30" />
+                                <h3 className="text-base font-semibold">Участники не найдены</h3>
                                 <p className="text-sm text-muted-foreground">По вашему запросу "{searchQuery}" ничего не найдено.</p>
                             </div>
                         )}
-                    </motion.div>
+                    </div>
                 )}
             </div>
 

@@ -47,4 +47,5 @@ func (err ErrorTypeForbidden) String() string {
 const (
 	ErrUnauthorized ErrorTypeUnauthorized = "unauthorized"
 	ErrForbidden    ErrorTypeForbidden    = "forbidden"
+	ErrNotFound     ErrorTypeNotFound     = "not found"
 )

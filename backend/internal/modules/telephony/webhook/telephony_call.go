@@ -2,20 +2,25 @@ package webhook
 
 import (
 	"context"
+
 	"telephony/internal/domain"
+	"telephony/internal/modules/telephony/provider"
 	"telephony/internal/modules/telephony_ingestion_pipeline"
 	srverr "telephony/internal/shared/server_error"
 )
 
 type telephonyCall struct {
 	telephonyIngPipService telephony_ingestion_pipeline.Service
+	providerRegistry       provider.Registry
 }
 
 func NewTelephonyCall(
 	telephonyIngPipService telephony_ingestion_pipeline.Service,
+	providerRegistry provider.Registry,
 ) TelephonyCall {
 	return &telephonyCall{
 		telephonyIngPipService: telephonyIngPipService,
+		providerRegistry:       providerRegistry,
 	}
 }
 
@@ -23,30 +28,27 @@ var (
 	telephonyErrCallNotValid srverr.ErrorTypeBadRequest = "telephony request is not valid"
 )
 
-func (m *telephonyCall) VoiceStatus(ctx context.Context, telephony domain.TelephonyName, req *domain.CallWorker) srverr.ServerError {
+// HandleWebhookRoute — Здесь выбирается провайдер, парсится вебхук и вызывается ingestion-пайплайн.
+func (m *telephonyCall) HandleWebhookRoute(ctx context.Context, telephony domain.TelephonyName, req *provider.WebhookRequest) srverr.ServerError {
 	if req == nil {
-		return srverr.NewServerError(telephonyErrCallNotValid, "telephony_call.VoiceStatus/nil_req")
-	}
-	if req.TelephonyAccountID == "" {
-		return srverr.NewServerError(telephonyErrCallNotValid, "telephony_call.VoiceStatus/empty_telephony_account_id")
-	}
-	if req.ExternalCallID == "" {
-		return srverr.NewServerError(telephonyErrCallNotValid, "telephony_call.VoiceStatus/empty_external_call_id")
-	}
-	if req.FromNumber == "" {
-		return srverr.NewServerError(telephonyErrCallNotValid, "telephony_call.VoiceStatus/empty_from_number")
-	}
-	if req.ToNumber == "" {
-		return srverr.NewServerError(telephonyErrCallNotValid, "telephony_call.VoiceStatus/empty_to_number")
-	}
-	if req.Event == nil {
-		return srverr.NewServerError(telephonyErrCallNotValid, "telephony_call.VoiceStatus/nil_event")
+		return srverr.NewServerError(telephonyErrCallNotValid, "telephony_call.HandleWebhookRoute/nil_request")
 	}
 
-	sErr := m.telephonyIngPipService.CallWorker(ctx, req, telephony)
+	p, ok := m.providerRegistry.GetProvider(telephony)
+	if !ok {
+		return srverr.NewServerError(telephonyErrCallNotValid, "telephony_call.HandleWebhookRoute/provider_not_found")
+	}
+
+	event, err := p.ParseVoiceStatusWebhook(ctx, req)
+	if err != nil {
+		return srverr.NewServerError(telephonyErrCallNotValid, "telephony_call.HandleWebhookRoute/parse").
+			SetError(err.Error())
+	}
+
+	sErr := m.telephonyIngPipService.HandleWebhookEvent(ctx, event)
 	if sErr != nil {
 		return sErr
 	}
-	return nil
 
+	return nil
 }
