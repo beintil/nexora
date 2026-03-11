@@ -23,7 +23,7 @@ type Handler interface {
 }
 
 type Service interface {
-	Register(ctx context.Context, req *domain.AuthRegisterInput) (*domain.AuthTokens, srverr.ServerError)
+	Register(ctx context.Context, req *domain.AuthRegisterInput) srverr.ServerError
 	Login(ctx context.Context, req *domain.AuthLoginInput) (*domain.AuthTokens, srverr.ServerError)
 	Refresh(ctx context.Context, refreshToken string) (*domain.AuthTokens, srverr.ServerError)
 	Logout(ctx context.Context, refreshToken string) srverr.ServerError

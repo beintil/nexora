@@ -51,9 +51,7 @@ paths:
             $ref: "#/definitions/RegisterRequest"
       responses:
         201:
-          description: Successfully registered
-          schema:
-            $ref: "#/definitions/RegisterResponse"
+          description: Successfully registered. No body; confirm email then login.
         400:
           description: Bad request (validation error)
           schema:
@@ -575,17 +573,6 @@ definitions:
         type: string
 
   LoginResponse:
-    type: object
-    required:
-      - accessToken
-      - refreshToken
-    properties:
-      accessToken:
-        type: string
-      refreshToken:
-        type: string
-
-  RegisterResponse:
     type: object
     required:
       - accessToken

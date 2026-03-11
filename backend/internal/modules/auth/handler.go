@@ -90,17 +90,14 @@ func (m *handler) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, sErr := m.service.Register(r.Context(), dto.RegisterRequestToDomain(&req))
+	sErr := m.service.Register(r.Context(), dto.RegisterRequestToDomain(&req))
 	if sErr != nil {
 		m.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(m.converter.ToHTTP(sErr)))
 		return
 	}
 
-	m.setRefreshTokenCookie(w, res.RefreshToken)
-	m.httpResponse.WriteResponse(w, r, http.StatusCreated, &models.RegisterResponse{
-		AccessToken:  &res.AccessToken,
-		RefreshToken: &res.RefreshToken,
-	})
+	// Токены не отдаём — пользователь должен подтвердить почту (verify-link), затем войти через login.
+	m.httpResponse.WriteResponse(w, r, http.StatusCreated, nil)
 }
 
 func (m *handler) handleLogin(w http.ResponseWriter, r *http.Request) {

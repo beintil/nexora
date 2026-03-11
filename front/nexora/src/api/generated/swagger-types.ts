@@ -320,10 +320,6 @@ export interface components {
             accessToken: string;
             refreshToken: string;
         };
-        RegisterResponse: {
-            accessToken: string;
-            refreshToken: string;
-        };
         TwilioVoiceStatusCallbackForm: {
             CallSid?: string;
             ParentCallSid?: string;
@@ -643,14 +639,12 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successfully registered */
+            /** @description Successfully registered. No body; confirm email then login. */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["RegisterResponse"];
-                };
+                content?: never;
             };
             /** @description Bad request (validation error) */
             400: {

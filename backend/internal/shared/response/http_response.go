@@ -18,6 +18,10 @@ func (m *httpResponse) ErrorResponse(w http.ResponseWriter, r *http.Request, err
 }
 
 func (m *httpResponse) WriteResponse(w http.ResponseWriter, r *http.Request, code int, resp any) {
+	if code == http.StatusNoContent || (code == http.StatusCreated && resp == nil) {
+		w.WriteHeader(code)
+		return
+	}
 	raw, err := json.Marshal(resp)
 	if err != nil {
 		m.log.Errorf("error marshalling response: %v", err)

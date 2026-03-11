@@ -4,7 +4,6 @@ import type { components, paths } from "./generated/swagger-types";
 type LoginPayload = paths["/v1/auth/login"]["post"]["requestBody"]["content"]["application/json"];
 type RegisterPayload = paths["/v1/auth/register"]["post"]["requestBody"]["content"]["application/json"];
 type LoginResponse = paths["/v1/auth/login"]["post"]["responses"][200]["content"]["application/json"];
-type RegisterResponse = paths["/v1/auth/register"]["post"]["responses"][201]["content"]["application/json"];
 type ApiErrorPayload = components["schemas"]["TransportError"];
 
 export type ApiError = Error & {
@@ -74,8 +73,8 @@ export function loginRequest(payload: LoginPayload): Promise<LoginResponse> {
     return postJson<LoginPayload, LoginResponse>("/v1/auth/login", payload);
 }
 
-export function registerRequest(payload: RegisterPayload): Promise<RegisterResponse> {
-    return postJson<RegisterPayload, RegisterResponse>("/v1/auth/register", payload);
+export function registerRequest(payload: RegisterPayload): Promise<void> {
+    return postJson<RegisterPayload, void>("/v1/auth/register", payload);
 }
 
 /** GET verify-link: подтверждение email по токену из письма. Успех — 204. */

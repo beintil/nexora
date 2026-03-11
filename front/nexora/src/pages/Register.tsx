@@ -2,7 +2,6 @@ import { useState } from "react"
 import type { FormEvent } from "react"
 import { useNavigate } from "react-router-dom"
 import { registerRequest, type ApiError } from "../api/auth"
-import { useAuth } from "../context/AuthContext"
 import { BACKEND_URL } from "../config"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,7 +14,6 @@ type RegisterPageProps = {
 
 export default function Register({ onBack, onSwitch }: RegisterPageProps) {
     const navigate = useNavigate()
-    const { setAccessToken } = useAuth()
     const [companyName, setCompanyName] = useState("")
     const [email, setEmail] = useState("")
     const [password, setPassword] = useState("")
@@ -38,9 +36,8 @@ export default function Register({ onBack, onSwitch }: RegisterPageProps) {
 
         try {
             setIsLoading(true)
-            const data = await registerRequest({ companyName, email, password })
-            setAccessToken(data.accessToken)
-            setSuccess("Аккаунт успешно создан.")
+            await registerRequest({ companyName, email, password })
+            setSuccess("Аккаунт создан. Подтвердите почту и войдите.")
             setShowVerificationModal(true)
         } catch (submitError) {
             if (submitError instanceof Error) {

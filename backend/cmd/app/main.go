@@ -16,11 +16,11 @@ import (
 	"telephony/internal/modules/company"
 	"telephony/internal/modules/countries"
 	"telephony/internal/modules/notification"
+	"telephony/internal/modules/telephony/provider"
 	telephonywebhook "telephony/internal/modules/telephony/webhook"
 	mango2 "telephony/internal/modules/telephony/webhook/mango"
 	mts2 "telephony/internal/modules/telephony/webhook/mts"
 	twilio2 "telephony/internal/modules/telephony/webhook/twilio"
-	zadarma2 "telephony/internal/modules/telephony/webhook/zadarma"
 	"telephony/internal/modules/telephony_ingestion_pipeline"
 	"telephony/internal/modules/user"
 	"telephony/internal/runner"
@@ -176,7 +176,12 @@ func initBusinessLogic(
 	callService := call.NewService(callEventsService, callRepos, transaction)
 	companyService := company.NewService(callService, companyRepos, transaction)
 	telephonyIngestionPipelineService := telephony_ingestion_pipeline.NewService(countriesService, callService, companyService, transaction)
-	telephonyCallService := telephonywebhook.NewTelephonyCall(telephonyIngestionPipelineService)
+	telephonyProviderRegistry := provider.NewRegistry(
+		provider.NewTwilioProvider(),
+		provider.NewMangoProvider(),
+		provider.NewMTSProvider(),
+	)
+	telephonyCallService := telephonywebhook.NewTelephonyCall(telephonyIngestionPipelineService, telephonyProviderRegistry)
 	notificationService := notification.NewService(notificationRepos, transaction)
 
 	s3Storage, err := yandexstorage.NewClient(
@@ -227,7 +232,6 @@ func initBusinessLogic(
 		company.NewRunnerHandlerV1(router, companyService, httpResp, convert),
 		twilio2.NewRunnerHandlerV1(router, telephonyCallService, httpResp, convert, validationFormat),
 		mango2.NewRunnerHandlerV1(router, telephonyCallService, httpResp, convert, validationFormat),
-		zadarma2.NewRunnerHandlerV1(router, telephonyCallService, httpResp, convert, validationFormat),
 		mts2.NewRunnerHandlerV1(router, telephonyCallService, httpResp, convert, validationFormat),
 		notification.NewRunnerHandlerV1(router, notificationService, httpResp, convert),
 	)

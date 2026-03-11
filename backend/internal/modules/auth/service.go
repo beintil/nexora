@@ -92,56 +92,56 @@ const (
 
 var errOAuthStateNotFoundOrExpired = errors.New("oauth state not found or expired")
 
-func (s *service) Register(ctx context.Context, req *domain.AuthRegisterInput) (*domain.AuthTokens, srverr.ServerError) {
+func (s *service) Register(ctx context.Context, req *domain.AuthRegisterInput) srverr.ServerError {
 	if req == nil {
-		return nil, srverr.NewServerError(ServiceErrorAuthRequestIsNotValid, "auth.Register/nil_request")
+		return srverr.NewServerError(ServiceErrorAuthRequestIsNotValid, "auth.Register/nil_request")
 	}
 	emailNorm, err := validator.ValidateEmail(req.Email)
 	if err != nil {
-		return nil, srverr.NewServerError(ServiceErrorAuthInvalidEmail, "auth.Register/email").SetError(err.Error())
+		return srverr.NewServerError(ServiceErrorAuthInvalidEmail, "auth.Register/email").SetError(err.Error())
 	}
 	err = validator.ValidatePassword(req.Password)
 	if err != nil {
-		return nil, srverr.NewServerError(ServiceErrorAuthInvalidPassword, "auth.Register/password").SetError(err.Error())
+		return srverr.NewServerError(ServiceErrorAuthInvalidPassword, "auth.Register/password").SetError(err.Error())
 	}
 
 	companyName := strings.TrimSpace(req.CompanyName)
 	if companyName == "" || len(companyName) > 100 || len(companyName) < 5 {
-		return nil, srverr.NewServerError(ServiceErrorAuthInvalidCompanyName, "auth.Register/empty_company")
+		return srverr.NewServerError(ServiceErrorAuthInvalidCompanyName, "auth.Register/empty_company")
 	}
 
 	tx, err := s.transaction.BeginTransaction(ctx)
 	if err != nil {
-		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "auth.Register/begin").SetError(err.Error())
+		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.Register/begin").SetError(err.Error())
 	}
 	defer s.transaction.Rollback(ctx, tx)
 
 	{
 		u, serverErr := s.userSvc.GetUserByEmailWithTx(ctx, tx, emailNorm)
 		if serverErr != nil && serverErr.GetServerError() != usermod.ServiceErrorUserNotFound {
-			return nil, serverErr
+			return serverErr
 		}
 		if u != nil {
 			if u.VerifiedRegistration {
-				return nil, srverr.NewServerError(ServiceErrorAuthInvalidCredentials, "auth.Register/user_already_verified")
+				return srverr.NewServerError(ServiceErrorAuthInvalidCredentials, "auth.Register/user_already_verified")
 			} else {
 				serverErr = s.sendCodeWithTx(ctx, tx, &domain.SendCodeInput{Email: emailNorm})
 				if serverErr != nil {
-					return nil, serverErr
+					return serverErr
 				}
-				return nil, srverr.NewServerError(ServiceErrorAuthConfirmEmail, "auth.Register/user_already_registered")
+				return srverr.NewServerError(ServiceErrorAuthConfirmEmail, "auth.Register/user_already_registered")
 			}
 		}
 	}
 
 	companyEntity, serverErr := s.companySvc.CreateCompanyWithTx(ctx, tx, companyName)
 	if serverErr != nil {
-		return nil, serverErr
+		return serverErr
 	}
 
 	passwordHash, err := password.HashPassword(req.Password)
 	if err != nil {
-		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "auth.RegisterWithTx/hash").SetError(err.Error())
+		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.RegisterWithTx/hash").SetError(err.Error())
 	}
 
 	user := &domain.User{
@@ -159,18 +159,18 @@ func (s *service) Register(ctx context.Context, req *domain.AuthRegisterInput) (
 	}
 	serverErr = s.userSvc.CreateUserWithTx(ctx, tx, user)
 	if serverErr != nil {
-		return nil, serverErr
+		return serverErr
 	}
 	serverErr = s.sendCodeWithTx(ctx, tx, &domain.SendCodeInput{Email: emailNorm})
 	if serverErr != nil {
-		return nil, serverErr
+		return serverErr
 	}
 
 	if err = s.transaction.Commit(ctx, tx); err != nil {
-		return nil, srverr.NewServerError(srverr.ErrInternalServerError, "auth.RegisterWithTx/commit").SetError(err.Error())
+		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.RegisterWithTx/commit").SetError(err.Error())
 	}
 
-	return s.issueTokens(ctx, user)
+	return nil
 }
 
 func (s *service) VerifyLink(ctx context.Context, req *domain.VerifyLinkInput) srverr.ServerError {
