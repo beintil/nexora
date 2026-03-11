@@ -17,7 +17,7 @@
 
 ```
 nexora/
-├── backend/          # Go-сервис (API, БД, Twilio, cron)
+├── backend/          # Go-сервис 
 ├── front/
 │   └── nexora/       # React + TypeScript + Vite
 ├── swagger.yaml      # Общий контракт API (NEXORA API)
