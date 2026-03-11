@@ -308,10 +308,12 @@ export interface components {
         };
         VerifyLinkRequest: {
             /**
-             * Format: uuid
-             * @description UUID из ссылки подтверждения
+             * @description 6-значный код из ссылки подтверждения или формы
+             * @pattern ^[0-9]{6}$
              */
             token: string;
+            /** Format: email */
+            email?: string;
         };
         RefreshRequest: {
             refreshToken: string;

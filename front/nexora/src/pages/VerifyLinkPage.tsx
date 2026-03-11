@@ -1,6 +1,6 @@
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, type FormEvent } from "react"
 import { useSearchParams, useNavigate, useLocation } from "react-router-dom"
-import { verifyLinkRequest, sendCodeRequest, type ApiError } from "../api/auth"
+import { verifyLinkRequest, verifyLinkByCodeRequest, sendCodeRequest, type ApiError } from "../api/auth"
 import { CheckCircle, XCircle, Loader2, Mail } from "lucide-react"
 
 const REDIRECT_SECONDS = 5
@@ -22,6 +22,10 @@ export default function VerifyLinkPage() {
     const [resendSuccess, setResendSuccess] = useState(false)
     const [resendError, setResendError] = useState("")
 
+    const [code, setCode] = useState("")
+    const [codeError, setCodeError] = useState("")
+    const [codeLoading, setCodeLoading] = useState(false)
+
     const didVerifyToken = useRef<string | null>(null)
 
     useEffect(() => {
@@ -29,10 +33,14 @@ export default function VerifyLinkPage() {
             setStatus("no_token")
             return
         }
+        if (!email) {
+            setStatus("no_token")
+            return
+        }
         if (didVerifyToken.current === token) return
         didVerifyToken.current = token
 
-        verifyLinkRequest(token)
+        verifyLinkRequest(token, email)
             .then(() => {
                 setStatus("success")
             })
@@ -70,6 +78,11 @@ export default function VerifyLinkPage() {
             setResendLoading(true)
             await sendCodeRequest(email)
             setResendSuccess(true)
+            // После успешной переотправки возвращаемся к вводу кода
+            setStatus("no_token")
+            setErrorMessage("")
+            setCode("")
+            setCodeError("")
         } catch (err) {
             if (err instanceof Error) {
                 const apiErr = err as ApiError
@@ -77,6 +90,40 @@ export default function VerifyLinkPage() {
             }
         } finally {
             setResendLoading(false)
+        }
+    }
+
+    async function handleCodeSubmit(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault()
+        setCodeError("")
+
+        const trimmed = code.trim()
+        if (!trimmed) {
+            setCodeError("Введите код из письма.")
+            return
+        }
+        if (!/^[0-9]{6}$/.test(trimmed)) {
+            setCodeError("Код должен состоять из 6 цифр.")
+            return
+        }
+
+        if (!email) {
+            setCodeError("Не удалось определить email. Перейдите по ссылке из письма или зарегистрируйтесь заново.")
+            return
+        }
+
+        try {
+            setCodeLoading(true)
+            await verifyLinkByCodeRequest(trimmed, email)
+            setStatus("success")
+        } catch (err) {
+            if (err instanceof Error) {
+                const apiErr = err as ApiError
+                setStatus("error")
+                setErrorMessage(apiErr.message || "Ошибка подтверждения кода. Код мог истечь или уже быть использован.")
+            }
+        } finally {
+            setCodeLoading(false)
         }
     }
 
@@ -100,35 +147,74 @@ export default function VerifyLinkPage() {
                                 <Mail className="h-10 w-10 text-slate-600" />
                             </div>
                         </div>
-                        <h1 className="text-2xl font-semibold text-slate-900 mb-2">Запросить новую ссылку для подтверждения</h1>
+                        <h1 className="text-2xl font-semibold text-slate-900 mb-2">Подтвердите аккаунт кодом</h1>
                         <p className="text-slate-600 text-sm mb-6">
-                            {email
-                                ? "Нажмите кнопку ниже, чтобы получить новую ссылку на почту."
-                                : "Перейдите по ссылке из письма для повторного запроса или войдите в аккаунт."}
+                            Введите 6-значный код из письма или перейдите по ссылке в письме.
                         </p>
-                            {email ? (
-                            <div className="space-y-3">
-                                {resendError && <p className="text-sm text-rose-600">{resendError}</p>}
-                                {resendSuccess && (
-                                    <p className="text-sm text-green-600">Новая ссылка отправлена. Проверьте почту.</p>
-                                )}
-                                <button
-                                    type="button"
-                                    onClick={handleResendClick}
-                                    disabled={resendLoading}
-                                    className="w-full py-4 rounded-2xl bg-slate-900 text-white font-medium hover:opacity-90 transition disabled:opacity-60 disabled:cursor-not-allowed"
-                                >
-                                    {resendLoading ? "Отправка..." : "Отправить новую ссылку"}
-                                </button>
+
+                        <form className="space-y-4 text-left" onSubmit={handleCodeSubmit}>
+                            <div className="space-y-2">
+                                <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide">
+                                    Код подтверждения
+                                </label>
+                                <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    pattern="[0-9]*"
+                                    maxLength={6}
+                                    autoComplete="one-time-code"
+                                    value={code}
+                                    onChange={(e) => {
+                                        const value = e.target.value.replace(/\D/g, "").slice(0, 6)
+                                        setCode(value)
+                                    }}
+                                    className="w-full px-4 py-3 rounded-2xl border border-slate-300 text-center text-lg tracking-[0.35em] font-semibold outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900 bg-slate-50"
+                                    placeholder="••••••"
+                                />
+                                {codeError && <p className="text-xs text-rose-600">{codeError}</p>}
                             </div>
-                        ) : null}
-                        <button
-                            type="button"
-                            onClick={() => navigate("/", { state: { openAuth: "login" } })}
-                            className={`w-full py-3 rounded-2xl border border-slate-300 bg-white text-slate-700 font-medium hover:bg-slate-50 transition ${email ? "mt-4" : ""}`}
-                        >
-                            Вернуться к входу
-                        </button>
+                            <button
+                                type="submit"
+                                disabled={codeLoading || code.length !== 6}
+                                className="w-full py-3 rounded-2xl bg-slate-900 text-white font-medium hover:opacity-90 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                                {codeLoading ? "Проверяем код..." : "Подтвердить код"}
+                            </button>
+                        </form>
+
+                        <div className="mt-8 pt-6 border-t border-slate-200">
+                            <p className="text-slate-600 text-sm font-medium mb-3 flex items-center justify-center gap-2">
+                                <Mail className="h-4 w-4" />
+                                Не пришло письмо или ссылка истекла?
+                            </p>
+                            {email ? (
+                                <div className="space-y-3">
+                                    {resendError && <p className="text-sm text-rose-600">{resendError}</p>}
+                                    {resendSuccess && (
+                                        <p className="text-sm text-green-600">Новая ссылка отправлена. Проверьте почту.</p>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={handleResendClick}
+                                        disabled={resendLoading}
+                                        className="w-full py-3 rounded-2xl border border-slate-300 bg-white text-slate-700 font-medium hover:bg-slate-50 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                                    >
+                                        {resendLoading ? "Отправка..." : "Отправить новую ссылку"}
+                                    </button>
+                                </div>
+                            ) : (
+                                <p className="text-slate-500 text-xs">
+                                    Авторизуйтесь и запросите новую ссылку для подтверждения.
+                                </p>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => navigate("/", { state: { openAuth: "login" } })}
+                                className="mt-4 w-full py-3 rounded-2xl border border-slate-300 bg-white text-slate-700 font-medium hover:bg-slate-50 transition"
+                            >
+                                Вернуться к входу
+                            </button>
+                        </div>
                     </>
                 )}
 

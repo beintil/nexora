@@ -15,6 +15,8 @@ import (
 	"telephony/internal/modules/call_events"
 	"telephony/internal/modules/company"
 	"telephony/internal/modules/countries"
+	"telephony/internal/modules/message_delivery"
+	"telephony/internal/modules/message_delivery/message_provider"
 	"telephony/internal/modules/notification"
 	"telephony/internal/modules/telephony/provider"
 	telephonywebhook "telephony/internal/modules/telephony/webhook"
@@ -33,8 +35,10 @@ import (
 	transperr "telephony/internal/shared/transport_error"
 	"telephony/pkg/client/country"
 	email_stmp "telephony/pkg/client/email_sender/stmp"
+	"telephony/pkg/client/messenger"
 	"telephony/pkg/client/oauth/appleoauth"
 	"telephony/pkg/client/oauth/googleoauth"
+	"telephony/pkg/client/sms_sender"
 	"telephony/pkg/client/yandexstorage"
 	"telephony/pkg/logger"
 	"time"
@@ -164,6 +168,13 @@ func initBusinessLogic(
 		cfg.Sms.Smtp.From,
 	)
 
+	messageDeliveryService := message_delivery.NewService(
+		log,
+		message_provider.NewEmailSenderAdapter(emailSender),
+		message_provider.NewSMSSenderAdapter(sms_sender.NewNoopSender()),
+		message_provider.NewMessengerSenderAdapter(messenger.NewNoopSender()),
+	)
+
 	//robokassaClient := robokassa.NewClient(robokassa.Config{
 	//	MerchantLogin: cfg.Payment.Robokassa.MerchantLogin,
 	//	Password1:     cfg.Payment.Robokassa.Password1,
@@ -223,7 +234,7 @@ func initBusinessLogic(
 		log.Errorf("apple oauth init: %v", err)
 	}
 
-	authService := auth.NewService(userService, companyService, transaction, redisCache, cfg, emailSender, googleOAuthClient, appleOAuthClient)
+	authService := auth.NewService(userService, companyService, transaction, redisCache, cfg, messageDeliveryService, googleOAuthClient, appleOAuthClient)
 
 	runner.InitHandlers(router, mid,
 		auth.NewRunnerHandlerV1(router, authService, httpResp, convert, cfg, log, redisClient),

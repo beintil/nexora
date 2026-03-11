@@ -6,17 +6,18 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/url"
 	"strings"
 	"telephony/internal/config"
 	"telephony/internal/domain"
 	"telephony/internal/modules/company"
+	"telephony/internal/modules/message_delivery"
 	usermod "telephony/internal/modules/user"
 	"telephony/internal/shared/cache"
 	"telephony/internal/shared/database/postgres"
 	"telephony/internal/shared/server_error"
 	"telephony/internal/shared/templates"
-	"telephony/pkg/client/email_sender"
 	"telephony/pkg/client/oauth/appleoauth"
 	"telephony/pkg/client/oauth/googleoauth"
 	"telephony/pkg/jwt"
@@ -35,7 +36,7 @@ type service struct {
 	repo        repository
 	cfg         config.Config
 
-	emailSender  email_sender.Sender
+	msgDelivery  message_delivery.Service
 	googleClient googleoauth.Client
 	appleClient  appleoauth.Client
 }
@@ -47,7 +48,7 @@ func NewService(
 	store cache.Cache,
 	cfg config.Config,
 
-	emailSender email_sender.Sender,
+	msgDelivery message_delivery.Service,
 	googleClient googleoauth.Client,
 	appleClient appleoauth.Client,
 ) Service {
@@ -58,7 +59,7 @@ func NewService(
 		repo:        newRepository(store),
 		cfg:         cfg,
 
-		emailSender:  emailSender,
+		msgDelivery:  msgDelivery,
 		googleClient: googleClient,
 		appleClient:  appleClient,
 	}
@@ -181,15 +182,26 @@ func (s *service) VerifyLink(ctx context.Context, req *domain.VerifyLinkInput) s
 	if token == "" {
 		return srverr.NewServerError(ServiceErrorVerifyLink, "auth.VerifyLinkWithTx/empty_token")
 	}
-	if _, err := uuid.Parse(token); err != nil {
-		return srverr.NewServerError(ServiceErrorVerifyLink, "auth.VerifyLink/invalid_uuid").SetError(err.Error())
+	if len(token) != 6 || !isAllDigits(token) {
+		return srverr.NewServerError(ServiceErrorVerifyLink, "auth.VerifyLink/invalid_code")
 	}
-	email, err := s.repo.getVerifyEmailLink(ctx, token)
+	if strings.TrimSpace(req.Email) == "" {
+		return srverr.NewServerError(ServiceErrorVerifyLink, "auth.VerifyLink/empty_email")
+	}
+	emailNorm, err := validator.ValidateEmail(req.Email)
+	if err != nil {
+		return srverr.NewServerError(ServiceErrorVerifyLink, "auth.VerifyLink/invalid_email").SetError(err.Error())
+	}
+
+	storedEmail, err := s.repo.getVerifyEmailLink(ctx, token)
 	if err != nil {
 		if errors.Is(err, cache.ErrorCacheValueNotFound) {
 			return srverr.NewServerError(ServiceErrorVerifyLink, "auth.VerifyLink/link_expired_or_invalid")
 		}
 		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.VerifyLinkWithTx/link_store").SetError(err.Error())
+	}
+	if storedEmail != emailNorm {
+		return srverr.NewServerError(ServiceErrorVerifyLink, "auth.VerifyLink/email_mismatch")
 	}
 	err = s.repo.deleteVerifyEmailLink(ctx, token)
 	if err != nil {
@@ -202,7 +214,7 @@ func (s *service) VerifyLink(ctx context.Context, req *domain.VerifyLinkInput) s
 	}
 	defer s.transaction.Rollback(ctx, tx)
 
-	u, serverErr := s.userSvc.GetUserByEmailWithTx(ctx, tx, email)
+	u, serverErr := s.userSvc.GetUserByEmailWithTx(ctx, tx, emailNorm)
 	if serverErr != nil {
 		if serverErr.GetServerError() == usermod.ServiceErrorUserNotFound {
 			return srverr.NewServerError(ServiceErrorVerifyLink, "auth.VerifyLink/user_not_found")
@@ -259,31 +271,35 @@ func (s *service) sendCodeWithTx(ctx context.Context, tx pgx.Tx, req *domain.Sen
 		return srverr.NewServerError(ServiceErrorSendCode, "auth.SendCode/user_already_verified")
 	}
 
-	tokenUUID := uuid.New().String()
+	code, err := generateVerificationCode()
+	if err != nil {
+		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.SendCode/generate_code").SetError(err.Error())
+	}
 	authLinkTTL := time.Duration(s.cfg.Auth.AuthLinkTTLSec) * time.Second
-	if err := s.repo.setVerifyEmailLink(ctx, tokenUUID, emailNorm, authLinkTTL); err != nil {
+	if err := s.repo.setVerifyEmailLink(ctx, code, emailNorm, authLinkTTL); err != nil {
 		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.SendCode/create_link").SetError(err.Error())
 	}
 
-	link := s.cfg.Auth.AuthLinkBaseURL + tokenUUID + "&email=" + url.QueryEscape(emailNorm)
+	link := s.cfg.Auth.AuthLinkBaseURL + code + "&email=" + url.QueryEscape(emailNorm)
 	render, err := templates.NewRenderer()
 	if err != nil {
 		return srverr.NewServerError(srverr.ErrInternalServerError, "verification.SendCode/renderer").SetError(err.Error())
 	}
 	body, err := render.Render(templates.HTMLFileRegister, map[string]interface{}{
 		"Link": link,
+		"Code": code,
 	})
 	if err != nil {
 		return srverr.NewServerError(srverr.ErrInternalServerError, "verification.SendCode/render").SetError(err.Error())
 	}
 
 	if emailNorm != "" {
-		if err := s.emailSender.Send(ctx, email_sender.Message{
+		if err := s.msgDelivery.Send(ctx, &domain.OutgoingMessage{
 			To:      emailNorm,
 			Subject: "Регистрация Аккаунта",
-			Text:    fmt.Sprintf("Перейдите по ссылке для подтверждения: %s", link),
+			Body:    fmt.Sprintf("Ваш код подтверждения: %s\n\nПерейдите по ссылке для подтверждения: %s", code, link),
 			HTML:    body.String(),
-		}); err != nil {
+		}, []domain.DeliveryChannel{domain.DeliveryChannelEmail}); err != nil {
 			return srverr.NewServerError(srverr.ErrInternalServerError, "verification.SendCode/email").SetError(err.Error())
 		}
 	}
@@ -608,6 +624,24 @@ func generateRandomString(n int) (string, error) {
 	return base64.URLEncoding.EncodeToString(b), nil
 }
 
+func generateVerificationCode() (string, error) {
+	max := big.NewInt(1000000) // 0..999999
+	n, err := rand.Int(rand.Reader, max)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%06d", n.Int64()), nil
+}
+
+func isAllDigits(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // --- Password Management ---
 
 func (s *service) ChangePassword(ctx context.Context, userID uuid.UUID, oldPassword, newPassword string) srverr.ServerError {
@@ -671,16 +705,14 @@ func (s *service) SendResetPasswordLink(ctx context.Context, email string) srver
 		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.SendResetPasswordLink/store").SetError(err.Error())
 	}
 
-	resetLink := fmt.Sprintf("%s/reset-password?token=%s", strings.TrimSuffix(s.cfg.Auth.AuthLinkBaseURL, "/"), token)
-	body := fmt.Sprintf("Reset your password by clicking here: %s", resetLink)
-
-	msg := email_sender.Message{
+	if err := s.msgDelivery.Send(ctx, &domain.OutgoingMessage{
 		To:      emailNorm,
 		Subject: "Password Reset",
-		HTML:    body,
-	}
-
-	if err := s.emailSender.Send(ctx, msg); err != nil {
+		HTML: fmt.Sprintf("Reset your password by clicking here: %s",
+			fmt.Sprintf("%s/reset-password?token=%s", strings.TrimSuffix(s.cfg.Auth.AuthLinkBaseURL, "/"), token),
+		),
+	},
+		[]domain.DeliveryChannel{domain.DeliveryChannelEmail}); err != nil {
 		return srverr.NewServerError(srverr.ErrInternalServerError, "auth.SendResetPasswordLink/email_send").SetError(err.Error())
 	}
 

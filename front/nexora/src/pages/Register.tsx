@@ -38,7 +38,7 @@ export default function Register({ onBack, onSwitch }: RegisterPageProps) {
             setIsLoading(true)
             await registerRequest({ companyName, email, password })
             setSuccess("Аккаунт создан. Подтвердите почту и войдите.")
-            setShowVerificationModal(true)
+            navigate("/verify-link", { state: { email } })
         } catch (submitError) {
             if (submitError instanceof Error) {
                 const apiError = submitError as ApiError
@@ -101,41 +101,6 @@ export default function Register({ onBack, onSwitch }: RegisterPageProps) {
                     </div>
                 )}
                 {success && <p className="text-sm text-emerald-600 font-medium">{success}</p>}
-                
-                {showVerificationModal && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-                        <div className="w-full max-w-md rounded-3xl bg-card border border-border p-8 shadow-2xl">
-                            <div className="mb-6 flex justify-center">
-                                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500">
-                                    <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                                    </svg>
-                                </div>
-                            </div>
-                            <h3 className="text-xl font-bold text-center text-foreground mb-3">Проверьте почту</h3>
-                            <p className="text-muted-foreground text-center text-sm leading-relaxed mb-6">
-                                Мы отправили ссылку для подтверждения на <span className="font-semibold text-foreground">{email}</span>. Откройте письмо и перейдите по ссылке, чтобы завершить регистрацию.
-                            </p>
-                            <p className="text-muted-foreground text-center text-xs mb-6">
-                                Не пришло письмо?{" "}
-                                <button
-                                    type="button"
-                                    onClick={() => { setShowVerificationModal(false); navigate("/verify-link", { state: { email } }); }}
-                                    className="text-primary font-semibold hover:underline"
-                                >
-                                    Запросить новую ссылку
-                                </button>
-                            </p>
-                            <Button
-                                type="button"
-                                onClick={() => { setShowVerificationModal(false); onSwitch(); }}
-                                className="w-full h-12 text-base font-medium rounded-xl"
-                            >
-                                OK, перейти ко входу
-                            </Button>
-                        </div>
-                    </div>
-                )}
 
                 <Button
                     type="submit"

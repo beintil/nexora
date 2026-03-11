@@ -17,7 +17,6 @@ import (
 
 	"github.com/go-openapi/strfmt"
 	"github.com/go-redis/redis/v8"
-	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
 
@@ -55,7 +54,7 @@ func (m *handler) Run(router *mux.Router, mid middleware.Middleware) {
 	authRouter := router.PathPrefix("/auth").Subrouter()
 
 	rateLimitRegister := middleware.RateLimitHandler(m.redisClient, 5, time.Minute)
-	rateLimitLogin := middleware.RateLimitHandler(m.redisClient, 10, time.Minute)
+	rateLimitLogin := middleware.RateLimitHandler(m.redisClient, 5, time.Minute)
 	rateLimitSendCode := middleware.RateLimitHandler(m.redisClient, 3, time.Minute)
 
 	authRouter.Handle("/register", rateLimitRegister(http.HandlerFunc(m.handleRegister))).Methods(http.MethodPost)
@@ -177,20 +176,32 @@ func (m *handler) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 func (m *handler) handleVerifyLink(w http.ResponseWriter, r *http.Request) {
 	token := strings.TrimSpace(r.URL.Query().Get("token"))
-	if token == "" {
+	email := strings.TrimSpace(r.URL.Query().Get("email"))
+	if token == "" || email == "" {
 		m.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(m.converter.ToHTTP(
 			srverr.NewServerError(ServiceErrorVerifyLink, "auth.handleVerifyLink/empty_token"),
 		)))
 		return
 	}
-	if _, err := uuid.Parse(token); err != nil {
+	if len(token) != 6 {
 		m.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(m.converter.ToHTTP(
-			srverr.NewServerError(ServiceErrorVerifyLink, "auth.handleVerifyLink/invalid_uuid").SetError(err.Error()),
+			srverr.NewServerError(ServiceErrorVerifyLink, "auth.handleVerifyLink/invalid_code_length"),
 		)))
 		return
 	}
+	for i := 0; i < len(token); i++ {
+		if token[i] < '0' || token[i] > '9' {
+			m.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(m.converter.ToHTTP(
+				srverr.NewServerError(ServiceErrorVerifyLink, "auth.handleVerifyLink/invalid_code_format"),
+			)))
+			return
+		}
+	}
 
-	sErr := m.service.VerifyLink(r.Context(), &domain.VerifyLinkInput{Token: token})
+	sErr := m.service.VerifyLink(r.Context(), &domain.VerifyLinkInput{
+		Token: token,
+		Email: email,
+	})
 	if sErr != nil {
 		m.httpResponse.ErrorResponse(w, r, dto.TransportErrorToModel(m.converter.ToHTTP(sErr)))
 		return

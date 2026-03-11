@@ -68,12 +68,13 @@ type AuthTokens struct {
 	RefreshToken string
 }
 
-// SendCodeInput — запрос на отправку ссылки подтверждения (UUID) на email.
+// SendCodeInput — запрос на отправку кода подтверждения (6-значный код) на email.
 type SendCodeInput struct {
 	Email string
 }
 
-// VerifyLinkInput — переход по ссылке подтверждения (token = UUID из ссылки).
+// VerifyLinkInput — подтверждение регистрации по коду (token = 6-значный код из ссылки или формы) и email.
 type VerifyLinkInput struct {
-	Token string // UUID из query или body
+	Token string // 6-значный код из query или body
+	Email string // email пользователя, для которого подтверждаем регистрацию
 }

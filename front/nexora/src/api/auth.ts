@@ -5,6 +5,7 @@ type LoginPayload = paths["/v1/auth/login"]["post"]["requestBody"]["content"]["a
 type RegisterPayload = paths["/v1/auth/register"]["post"]["requestBody"]["content"]["application/json"];
 type LoginResponse = paths["/v1/auth/login"]["post"]["responses"][200]["content"]["application/json"];
 type ApiErrorPayload = components["schemas"]["TransportError"];
+type VerifyLinkBody = components["schemas"]["VerifyLinkRequest"];
 
 export type ApiError = Error & {
     /** HTTP статус из backend (code в TransportError или response.status) */
@@ -77,9 +78,22 @@ export function registerRequest(payload: RegisterPayload): Promise<void> {
     return postJson<RegisterPayload, void>("/v1/auth/register", payload);
 }
 
-/** GET verify-link: подтверждение email по токену из письма. Успех — 204. */
-export function verifyLinkRequest(token: string): Promise<void> {
-    return getNoContent(`/v1/auth/verify-link?token=${encodeURIComponent(token)}`);
+/** GET verify-link: подтверждение email по токену из письма (token + email в query). Успех — 204. */
+export function verifyLinkRequest(token: string, email: string): Promise<void> {
+    const params = new URLSearchParams({
+        token,
+        email,
+    });
+    return getNoContent(`/v1/auth/verify-link?${params.toString()}`);
+}
+
+/** GET verify-link: подтверждение email по коду из формы (token + email в query). Успех — 204. */
+export function verifyLinkByCodeRequest(token: string, email: string): Promise<void> {
+    const params = new URLSearchParams({
+        token,
+        email,
+    });
+    return getNoContent(`/v1/auth/verify-link?${params.toString()}`);
 }
 
 async function getNoContent(path: string): Promise<void> {

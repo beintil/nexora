@@ -171,14 +171,19 @@ paths:
       tags:
         - auth
       summary: Verify link (transition by link from email/SMS)
-      description: Token (UUID) передаётся в query. Ссылка приходит в сообщении.
+      description: 6-значный токен (код) передаётся в query. Ссылка приходит в сообщении.
       operationId: authVerifyLinkGet
       parameters:
         - in: query
           name: token
           required: true
           type: string
-          format: uuid
+          pattern: '^[0-9]{6}$'
+        - in: query
+          name: email
+          required: true
+          type: string
+          format: email
       responses:
         204:
           description: Link verified
@@ -561,8 +566,8 @@ definitions:
     properties:
       token:
         type: string
-        format: uuid
-        description: UUID из ссылки подтверждения
+        pattern: '^[0-9]{6}$'
+        description: 6-значный код из ссылки подтверждения или формы
 
   RefreshRequest:
     type: object
